@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.1 - 2026-11-23
+
+- Fixed: the AI mechanic failed with "API error 400 ... Invalid `signature` in `thinking` block" on any question asked after a new scan, or when it re-scanned the vehicle mid-answer. Reasoning blocks from earlier turns are no longer resent, and the instructions stay fixed for the whole of each question.
+- Live data now decodes four more sensors that showed as raw hex: O2 sensors present (PID 13), OBD standard (1C), monitor status this drive cycle (41), and EVAP absolute vapor pressure (53).
+
 ## v1.0.0 - 2026-11-23
 
 First release.

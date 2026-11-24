@@ -981,6 +981,29 @@ for _i, _pos in enumerate(O2_POS):
 for _pid, _pos in ((0x3C, "B1S1"), (0x3D, "B2S1"), (0x3E, "B1S2"), (0x3F, "B2S2")):
     PIDS[_pid] = (f"Catalyst temp {_pos}", "°C", 2, lambda d: round(_u16(d) / 10 - 40))
 
+OBD_STANDARD = {1: "OBD-II (CARB)", 2: "OBD (federal EPA)", 3: "OBD and OBD-II", 4: "OBD-I",
+                5: "not OBD compliant", 6: "EOBD (Europe)", 7: "EOBD and OBD-II",
+                8: "EOBD and OBD", 9: "EOBD, OBD and OBD-II", 10: "JOBD (Japan)",
+                11: "JOBD and OBD-II", 12: "JOBD and EOBD", 13: "JOBD, EOBD and OBD-II"}
+
+
+def _o2_present(d):
+    names = [p for i, p in enumerate(O2_POS) if d[0] & (1 << i)]
+    return ", ".join(names) or "none"
+
+
+def _monitors_this_cycle(d):
+    rows = readiness(d[1], d[2], d[3])
+    todo = [r["monitor"] for r in rows if r["status"] == "incomplete"]
+    return ("not yet complete this drive: " + ", ".join(todo)) if todo else \
+        "all enabled monitors complete this drive"
+
+
+PIDS[0x13] = ("O2 sensors present", "", 1, _o2_present)
+PIDS[0x1C] = ("OBD standard", "", 1, lambda d: OBD_STANDARD.get(d[0], f"type {d[0]}"))
+PIDS[0x41] = ("Monitor status this drive cycle", "", 4, _monitors_this_cycle)
+PIDS[0x53] = ("EVAP system absolute vapor pressure", "kPa", 2, lambda d: round(_u16(d) / 200, 2))
+
 SKIP_PIDS = {0x00, 0x01, 0x02, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0}
 DEFAULT_LIVE = [0x0C, 0x0D, 0x05, 0x04, 0x03, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x10, 0x0E, 0x0F,
                 0x11, 0x14, 0x15, 0x18, 0x19, 0x24, 0x25, 0x34, 0x35, 0x38, 0x42, 0x44, 0x2F]
@@ -1488,6 +1511,24 @@ def ai_error(status, msg):
     }.get(status, f"API error {status}: {msg}")
 
 
+def strip_thinking(messages):
+    """Remove reasoning blocks from finished earlier turns.
+
+    Each thinking block is sealed to the exact system prompt it was made with. The scan data
+    lives in the system prompt and changes whenever a new scan runs, so resending old
+    thinking blocks would be rejected. The API allows dropping them from earlier turns."""
+    out = []
+    for m in messages:
+        c = m.get("content")
+        if m.get("role") == "assistant" and isinstance(c, list):
+            c = [b for b in c if b.get("type") not in ("thinking", "redacted_thinking")]
+            if not c:
+                c = [{"type": "text", "text": "(no text)"}]
+            m = {**m, "content": c}
+        out.append(m)
+    return out
+
+
 def drop_none(x):
     if isinstance(x, dict):
         return {k: drop_none(v) for k, v in x.items() if v is not None}
@@ -1671,13 +1712,16 @@ class App:
         if not self.api_key:
             raise RuntimeError("Paste your Anthropic API key in the box at the top right first.")
         with self.chat_lock, self.status.task("AI mechanic is thinking ..."):
-            msgs = self.chat_hist + [{"role": "user", "content": question}]
+            msgs = strip_thinking(self.chat_hist) + [{"role": "user", "content": question}]
+            # One system prompt for the whole question: a re-scan mid-answer reaches the AI
+            # through the tool result, and the prompt must not change while thinking blocks
+            # from this question are still being sent back.
+            system_text = AI_SYSTEM + "\n\n" + ai_context(self.report)
             steps, cost, rescanned = [], 0.0, False
             try:
                 for _ in range(AI_STEPS):
                     self.status.say("AI mechanic is thinking ...")
-                    out = claude_request(self.api_key,
-                                         AI_SYSTEM + "\n\n" + ai_context(self.report), msgs)
+                    out = claude_request(self.api_key, system_text, msgs)
                     cost += usage_cost(out.get("usage", {}))
                     content = drop_none(out.get("content", []))
                     msgs.append({"role": "assistant", "content": content})
