@@ -73,7 +73,7 @@ CHANGELOG.md                  what changed in each version
 The `.exe` is built automatically by GitHub Actions, so nobody needs build tools on their own PC.
 
 - **Every push to `main`:** builds `OnlyScans.exe`. Open the **Actions** tab, open the run, and download it under **Artifacts**.
-- **New version:** update `CHANGELOG.md`, then go to **Releases → Draft a new release**, create a tag like `v1.1.0`, and publish. The workflow attaches `OnlyScans.exe` to the release, and the download link above always points to the newest one.
+- **New version:** update `CHANGELOG.md`, then go to **Releases → Draft a new release**, create a tag like `v1.1.0`, and publish. About 5–10 minutes later the workflow attaches `OnlyScans.exe` to the release, and the download link above always points to the newest one.
 - **On demand:** **Actions → Build OnlyScans.exe → Run workflow**.
 
 ### Running from source (Windows, macOS or Linux)

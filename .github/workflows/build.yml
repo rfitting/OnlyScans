@@ -1,6 +1,6 @@
 # Builds OnlyScans.exe on a Windows machine at GitHub.
-# - Every push and pull request: builds and keeps the .exe as a downloadable artifact.
-# - Publishing a release (or pushing a tag like v1.0.0): also attaches OnlyScans.exe to it.
+# - Every push to main and every pull request: builds and keeps the .exe as a downloadable artifact.
+# - Publishing a release (Releases -> Draft a new release -> Publish): also attaches OnlyScans.exe to it.
 # - Actions tab -> "Build OnlyScans.exe" -> "Run workflow": builds on demand.
 
 name: Build OnlyScans.exe
@@ -8,8 +8,9 @@ name: Build OnlyScans.exe
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -55,7 +56,8 @@ jobs:
           path: OnlyScans.exe
 
       - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           files: OnlyScans.exe
