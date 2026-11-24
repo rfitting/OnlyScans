@@ -1,0 +1,14 @@
+# build output
+/build/
+/dist/
+/launcher/target/
+OnlyScans.exe
+*.spec
+
+# python
+__pycache__/
+*.pyc
+
+# scan exports
+codes_*.csv
+scan_*.json
