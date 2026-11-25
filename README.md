@@ -17,11 +17,15 @@ The optional AI mechanic reads all of that data and tells you what to check and 
 
 ## Download
 
+**Website: [rfitting.github.io/OnlyScans](https://rfitting.github.io/OnlyScans/)**
+
 **[Download OnlyScans.exe](https://github.com/rfitting/OnlyScans/releases/latest/download/OnlyScans.exe)** (Windows 10/11, about 11 MB). All versions are on the [Releases page](https://github.com/rfitting/OnlyScans/releases).
 
 1. Double-click `OnlyScans.exe`.
 2. Windows SmartScreen will say "Windows protected your PC", because the file isn't code-signed. Click **More info**, then **Run anyway**. You only need to do this once.
 3. OnlyScans opens in your browser, and the guide opens on first launch. Keep the black window open while you use the app; closing it quits OnlyScans.
+
+**Updates:** OnlyScans checks for a new release each time it starts. When one is out, a green bar appears: click **Update now** and it updates and restarts itself. (If you have v1.1.0 or older, download v1.2.0 once by hand; it updates itself from then on.)
 
 Nothing else needs to be installed, apart from the USB driver for your adapter.
 
@@ -67,6 +71,7 @@ launcher/                     small Rust program that carries that bundle inside
 .github/workflows/build.yml   builds OnlyScans.exe on GitHub's Windows machines and tests it
 tests/j2534_stub/             stand-in J2534 driver the build uses to test the J2534 path on Windows
 GUIDE.md                      user guide
+docs/                         the website (GitHub Pages)
 CHANGELOG.md                  what changed in each version
 ```
 
@@ -77,7 +82,8 @@ CHANGELOG.md                  what changed in each version
 The `.exe` is built automatically by GitHub Actions, so nobody needs build tools on their own PC.
 
 - **Every push to `main`:** builds `OnlyScans.exe`. Open the **Actions** tab, open the run, and download it under **Artifacts**.
-- **New version:** update `CHANGELOG.md`, then go to **Releases → Draft a new release**, create a tag like `v1.1.0`, and publish. About 5–10 minutes later the workflow attaches `OnlyScans.exe` to the release, and the download link above always points to the newest one.
+- **New version:** update `CHANGELOG.md`, then go to **Releases → Draft a new release**, create a tag like `v1.2.0`, and publish. About 5–10 minutes later the workflow stamps that version into the app and attaches `OnlyScans.exe` to the release. The download link and the website always point to the newest one, and copies people already have offer the update the next time they start. Tags must look like `v1.2.3`; builds that aren't releases show "dev build" and don't check for updates.
+- **Website:** `docs/index.html`, served by GitHub Pages (Settings → Pages → Deploy from a branch → `main`, `/docs`).
 - **On demand:** **Actions → Build OnlyScans.exe → Run workflow**.
 
 ### Running from source (Windows, macOS or Linux)

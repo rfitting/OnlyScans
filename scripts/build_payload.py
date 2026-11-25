@@ -130,7 +130,15 @@ def main():
         sys.exit("The tarball doesn't look like a Windows python-build-standalone 'install_only' build.")
     trim(py)
     add_pyserial(py, work)
-    shutil.copy(os.path.join(ROOT, "onlyscans.py"), os.path.join(stage, "onlyscans.py"))
+    app = open(os.path.join(ROOT, "onlyscans.py"), encoding="utf-8").read()
+    version = (os.environ.get("ONLYSCANS_VERSION") or "dev").strip().lstrip("vV")
+    marker = 'APP_VERSION = "dev"'
+    if app.count(marker) != 1:
+        sys.exit(f"Expected exactly one '{marker}' line in onlyscans.py")
+    app = app.replace(marker, f'APP_VERSION = "{version}"')
+    with open(os.path.join(stage, "onlyscans.py"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(app)
+    print(f"App version: {version}")
 
     out = os.path.join(BUILD, "payload.tar.gz")
     print("Compressing payload ...")

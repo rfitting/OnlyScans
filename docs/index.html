@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OnlyScans: free OBD-II scan tool for Windows with an AI mechanic</title>
+<meta name="description" content="Free OBD-II scan tool for Windows. Reads every code, live data, freeze frame and self-tests through a vLinker/ELM327 adapter or a J2534 dealer tool, with a built-in AI mechanic.">
+<style>
+:root { --bg:#f4f6f8; --panel:#fff; --ink:#1f2933; --muted:#5b6774; --line:#dde3e9;
+        --brand:#1f3a5f; --brand2:#2c5d8f; --ok:#1e7d4f; --soft:#eef2f6; }
+* { box-sizing:border-box; }
+body { margin:0; font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif; color:var(--ink); background:var(--bg); line-height:1.55; }
+a { color:var(--brand2); }
+.wrap { max-width:1080px; margin:0 auto; padding:0 1.25rem; }
+nav { background:var(--panel); border-bottom:1px solid var(--line); }
+nav .wrap { display:flex; align-items:center; gap:1.4rem; height:58px; }
+nav .logo { font-weight:700; font-size:1.2rem; color:var(--ink); text-decoration:none; margin-right:auto; }
+nav a { text-decoration:none; color:var(--muted); font-size:.95rem; }
+nav a:hover { color:var(--brand); }
+.hero { padding:3.5rem 0 2rem; text-align:center; }
+.hero h1 { font-size:2.4rem; line-height:1.2; margin:0 0 .8rem; letter-spacing:-.01em; }
+.hero p.lead { font-size:1.15rem; color:var(--muted); max-width:720px; margin:0 auto 1.8rem; }
+.cta { display:inline-flex; align-items:center; gap:.6rem; background:var(--brand); color:#fff; text-decoration:none; font-weight:600; font-size:1.1rem; padding:.85rem 1.6rem; border-radius:8px; }
+.cta:hover { background:var(--brand2); }
+.cta-sub { margin-top:.7rem; font-size:.88rem; color:var(--muted); }
+.ghost { display:inline-block; margin-left:.6rem; padding:.85rem 1.2rem; border:1px solid var(--line); border-radius:8px; text-decoration:none; color:var(--ink); background:#fff; font-weight:600; }
+.shot { margin:2.4rem auto 0; max-width:1000px; border:1px solid var(--line); border-radius:10px; overflow:hidden; box-shadow:0 12px 40px rgba(31,58,95,.12); background:#fff; }
+.shot img { display:block; width:100%; height:auto; }
+.caption { text-align:center; font-size:.82rem; color:var(--muted); margin-top:.5rem; }
+section { padding:2.8rem 0; }
+section h2 { font-size:1.6rem; margin:0 0 1.2rem; text-align:center; }
+.grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1rem; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:1.1rem 1.2rem; }
+.card h3 { margin:.1rem 0 .4rem; font-size:1.05rem; }
+.card p { margin:0; color:var(--muted); font-size:.95rem; }
+.icon { font-size:1.4rem; }
+table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; font-size:.93rem; }
+th, td { text-align:left; padding:.6rem .8rem; border-bottom:1px solid var(--line); vertical-align:top; }
+th { background:var(--soft); }
+tr:last-child td { border-bottom:none; }
+.two { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+ol.steps { counter-reset:s; list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1rem; }
+ol.steps li { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:1.1rem 1.2rem; counter-increment:s; }
+ol.steps li::before { content:counter(s); display:inline-grid; place-items:center; width:1.8rem; height:1.8rem; border-radius:50%; background:var(--brand); color:#fff; font-weight:700; margin-bottom:.5rem; }
+.note { background:#fff8e6; border:1px solid #f0dca8; border-radius:10px; padding:1rem 1.2rem; font-size:.93rem; }
+footer { border-top:1px solid var(--line); padding:1.8rem 0 2.4rem; color:var(--muted); font-size:.85rem; text-align:center; }
+@media (max-width:820px) {
+  .grid, ol.steps, .two { grid-template-columns:1fr; }
+  .hero h1 { font-size:1.8rem; }
+  nav a:not(.logo):not(.gh) { display:none; }
+  .ghost { margin:.6rem 0 0; }
+}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a class="logo" href="#">OnlyScans</a>
+  <a href="#features">Features</a>
+  <a href="#adapters">Adapters</a>
+  <a href="#vehicles">Vehicles</a>
+  <a href="https://github.com/rfitting/OnlyScans/blob/main/GUIDE.md">Guide</a>
+  <a class="gh" href="https://github.com/rfitting/OnlyScans">GitHub</a>
+</div></nav>
+
+<header class="hero"><div class="wrap">
+  <h1>A free OBD-II scan tool for Windows,<br>with a built-in AI mechanic</h1>
+  <p class="lead">Plug in an OBD adapter, double-click, and read every code your car will give up: engine, ABS, airbag and body modules, plus live sensor data and the car's own self-tests. Then ask the AI mechanic what to check first.</p>
+  <a class="cta" id="dl" href="https://github.com/rfitting/OnlyScans/releases/latest/download/OnlyScans.exe">&#11015; Download for Windows</a>
+  <a class="ghost" href="https://github.com/rfitting/OnlyScans">View on GitHub</a>
+  <div class="cta-sub" id="dlsub">Latest version · Windows 10/11 · about 10 MB · free and open source</div>
+  <div class="shot"><img src="screenshot.png" alt="OnlyScans showing codes from a 2010 Toyota RAV4, with tabs for modules, live data, freeze frame and monitor tests, and the AI mechanic panel" width="1440" height="860"></div>
+  <div class="caption">An example scan (simulated data).</div>
+</div></header>
+
+<section id="features"><div class="wrap">
+  <h2>What it does</h2>
+  <div class="grid">
+    <div class="card"><div class="icon">&#128269;</div><h3>Reads all the codes</h3><p>Stored, pending and permanent codes, plus codes straight from ABS, airbag, body, transmission and other modules on supported makes.</p></div>
+    <div class="card"><div class="icon">&#128200;</div><h3>Live data and self-tests</h3><p>Every sensor the engine computer supports, the full freeze frame, readiness monitors, and Mode 06 test results with pass/FAIL and per-cylinder misfire counts.</p></div>
+    <div class="card"><div class="icon">&#129520;</div><h3>AI mechanic</h3><p>Claude reads the whole scan and walks you through likely causes and tests in order. It can watch live data while you talk to it. It only reads: it never clears codes or commands anything.</p></div>
+    <div class="card"><div class="icon">&#128295;</div><h3>Works with dealer tools</h3><p>Use a cheap vLinker/ELM327 adapter, or a J2534 tool such as the Mongoose-Plus, Ford VCM II, VCM 3 or VCMM, or Honda GNA600.</p></div>
+    <div class="card"><div class="icon">&#11014;&#65039;</div><h3>Keeps itself up to date</h3><p>On launch it checks for a new version and updates itself with one click, after checking the download against GitHub's checksum.</p></div>
+    <div class="card"><div class="icon">&#128274;</div><h3>Private and offline</h3><p>Scanning needs no internet or account. Your data stays on your PC unless you ask the AI, which uses your own Anthropic API key.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Get started</h2>
+  <ol class="steps">
+    <li><strong>Download and run</strong><br>Double-click <code>OnlyScans.exe</code>. Windows SmartScreen will warn because it isn't code-signed: click <em>More info</em>, then <em>Run anyway</em>.</li>
+    <li><strong>Plug in</strong><br>Connect your adapter to the car's OBD port and the PC, and turn the key to ON. On a vLinker FS, set the switch to HS-CAN.</li>
+    <li><strong>Scan</strong><br>Pick the adapter and click <em>Read all codes</em>. The built-in guide explains every tab, and the AI mechanic is in the right-hand panel.</li>
+  </ol>
+</div></section>
+
+<section id="adapters"><div class="wrap">
+  <h2>Adapters</h2>
+  <div class="two">
+    <div class="card"><h3>ELM327-type USB adapters</h3><p>Built and tested with the <strong>Vgate vLinker FS USB</strong> (FTDI driver). OBDLink and other ELM327/STN adapters also work. Covers every OBD-II protocol, including older K-line and J1850 vehicles.</p></div>
+    <div class="card"><h3>J2534 pass-thru tools</h3><p><strong>Opus IVS Mongoose-Plus</strong> (including the Toyota MFC3), <strong>Ford VCM II, VCM 3, VCMM</strong>, <strong>Honda GNA600</strong> and other J2534 v04.04 devices. Install the tool's driver and it appears in the port list. Adds Ford MS-CAN modules on tools that support it. Not yet confirmed on physical J2534 hardware, so <a href="https://github.com/rfitting/OnlyScans/issues">reports are welcome</a>.</p></div>
+  </div>
+</div></section>
+
+<section id="vehicles"><div class="wrap">
+  <h2>Vehicles</h2>
+  <table>
+    <tr><th>Vehicle</th><th>Engine codes, live data, freeze frame, readiness</th><th>Module codes (ABS, airbag, body...)</th></tr>
+    <tr><td>Any make, 1996+</td><td>Yes</td><td>Standard requests on CAN vehicles (about 2008+)</td></tr>
+    <tr><td>Toyota / Lexus / Scion</td><td>Yes</td><td>CAN: known module addresses. Older: blink-code steps shown</td></tr>
+    <tr><td>Honda / Acura</td><td>Yes</td><td>CAN: automatic module search</td></tr>
+    <tr><td>GM</td><td>Yes</td><td>CAN: automatic module search. About 1999–2007: experimental</td></tr>
+    <tr><td>Chrysler / Dodge / Jeep / Ram</td><td>Yes</td><td>CAN: automatic module search. About 2002–2007: experimental</td></tr>
+    <tr><td>Ford / Lincoln / Mercury</td><td>Yes</td><td>CAN: main-bus modules, plus MS-CAN comfort modules with a J2534 tool</td></tr>
+  </table>
+  <p class="caption">Full details are in the <a href="https://github.com/rfitting/OnlyScans/blob/main/GUIDE.md">guide</a>.</p>
+</div></section>
+
+<section><div class="wrap">
+  <div class="note"><strong>Safety:</strong> everything OnlyScans sends to the vehicle is a read-only request, except <em>Clear codes</em>, which always asks you first. Diagnostic suggestions, including the AI's, can be wrong. Confirm with proper tests before replacing parts, and follow the service manual for brakes, airbags and fuel systems.</div>
+</div></section>
+
+<footer><div class="wrap">
+  OnlyScans is free and open source under the MIT license. <a href="https://github.com/rfitting/OnlyScans">Source on GitHub</a> · <a href="https://github.com/rfitting/OnlyScans/releases">All releases</a> · <a href="https://github.com/rfitting/OnlyScans/issues">Report a problem</a><br>
+  Not affiliated with Toyota, Honda, GM, Stellantis, Ford, Vgate, Opus IVS, Bosch or Anthropic.
+</div></footer>
+
+<script>
+// Show the newest version number on the button (the link already always points to the latest release).
+fetch("https://api.github.com/repos/rfitting/OnlyScans/releases/latest")
+  .then(r => r.ok ? r.json() : null)
+  .then(rel => {
+    if (!rel || !rel.tag_name) return;
+    const exe = (rel.assets || []).find(a => a.name === "OnlyScans.exe");
+    const mb = exe ? (exe.size / 1e6).toFixed(0) + " MB" : "about 10 MB";
+    const date = rel.published_at ? new Date(rel.published_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
+    document.getElementById("dl").innerHTML = "&#11015; Download OnlyScans " + rel.tag_name.replace(/^v/, "v");
+    document.getElementById("dlsub").textContent = "Released " + date + " · Windows 10/11 · " + mb + " · free and open source";
+  })
+  .catch(() => {});
+</script>
+</body>
+</html>

@@ -1873,6 +1873,7 @@ def write_csv(r, path):
 # ==========================================================================
 
 import contextlib
+import hashlib
 import os
 import secrets
 import subprocess
@@ -1884,7 +1885,16 @@ import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+APP_VERSION = "dev"   # the release build replaces this with the release tag, e.g. "1.2.0"
 APP_PORT = 8765
+UPDATE_API = os.environ.get("ONLYSCANS_UPDATE_URL",
+                            "https://api.github.com/repos/rfitting/OnlyScans/releases/latest")
+UPDATE_EXIT_CODE = 42   # tells the launcher to restart into the new OnlyScans.exe
+
+
+def parse_version(v):
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)", str(v or "").strip())
+    return tuple(int(x) for x in m.groups()) if m else None
 AI_MODEL = "claude-sonnet-5-5"     # latest Sonnet; temperature/top_p/top_k are rejected
 AI_URL = os.environ.get("ONLYSCANS_API_URL", "https://api.anthropic.com/v1/messages")
 AI_MAX_TOKENS = 16000              # room for adaptive thinking + the answer
@@ -2181,6 +2191,8 @@ class App:
         self.api_key = cfg.get("api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
         self.key_source = ("saved" if cfg.get("api_key") else
                            "environment" if self.api_key else "")
+        self.update = None
+        self.update_lock = threading.Lock()
 
     # -- config / key
     def config(self):
@@ -2188,7 +2200,94 @@ class App:
         return {"has_key": bool(self.api_key), "key_source": self.key_source,
                 "key_ok": self.api_key.startswith("sk-ant-"),
                 "remembered": bool(cfg.get("api_key")), "guide_seen": bool(cfg.get("guide_seen")),
-                "model": AI_MODEL, "config_dir": config_dir()}
+                "model": AI_MODEL, "config_dir": config_dir(), "version": APP_VERSION,
+                "update": self.update}
+
+    # -- updates
+    def check_update(self):
+        """Ask GitHub for the latest release; remember it if it's newer than this copy."""
+        current = parse_version(APP_VERSION)
+        if not current:          # development build: nothing to compare against
+            return None
+        try:
+            req = urllib.request.Request(UPDATE_API, headers={
+                "User-Agent": f"OnlyScans/{APP_VERSION}", "Accept": "application/vnd.github+json"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                rel = json.loads(r.read())
+        except Exception:
+            return None          # offline or GitHub unreachable: try again next launch
+        latest = parse_version(rel.get("tag_name"))
+        asset = next((a for a in rel.get("assets", []) if a.get("name") == "OnlyScans.exe"), None)
+        if latest and latest > current and asset and not rel.get("draft") and not rel.get("prerelease"):
+            self.update = {"version": ".".join(map(str, latest)),
+                           "url": asset.get("browser_download_url"), "size": asset.get("size"),
+                           "digest": asset.get("digest") or "", "page": rel.get("html_url"),
+                           "notes": (rel.get("body") or "")[:6000],
+                           "can_install": bool(os.environ.get("ONLYSCANS_EXE_PATH"))}
+        return self.update
+
+    def install_update(self):
+        """Download the new OnlyScans.exe, check it, swap it in, then restart via the launcher."""
+        u, exe = self.update, os.environ.get("ONLYSCANS_EXE_PATH")
+        if not u:
+            raise RuntimeError("No update is available.")
+        if not exe:
+            raise RuntimeError("Self-update only works in OnlyScans.exe. Download the new version "
+                               f"from {u['page']}")
+        if not self.update_lock.acquire(blocking=False):
+            raise RuntimeError("An update is already being installed.")
+        new, old = exe + ".new", exe + ".old"
+        try:
+            with self.status.task(f"Downloading OnlyScans {u['version']} ..."):
+                req = urllib.request.Request(u["url"], headers={"User-Agent": f"OnlyScans/{APP_VERSION}"})
+                h = hashlib.sha256()
+                with urllib.request.urlopen(req, timeout=120) as r, open(new, "wb") as f:
+                    while True:
+                        chunk = r.read(1 << 16)
+                        if not chunk:
+                            break
+                        h.update(chunk)
+                        f.write(chunk)
+                size = os.path.getsize(new)
+                with open(new, "rb") as f:
+                    is_exe = f.read(2) == b"MZ" or os.name != "nt"   # Windows programs start "MZ"
+                if not is_exe or (u.get("size") and size != u["size"]):
+                    raise RuntimeError("The download was incomplete or isn't a Windows program. "
+                                       "Nothing was changed; try again later.")
+                if u["digest"].startswith("sha256:") and h.hexdigest() != u["digest"][7:].lower():
+                    raise RuntimeError("The download didn't match GitHub's checksum. Nothing was "
+                                       "changed; try again later.")
+                self.status.say("Installing the update ...")
+                try:
+                    os.chmod(new, os.stat(exe).st_mode)   # keep it runnable (matters off Windows)
+                except OSError:
+                    pass
+                try:
+                    if os.path.exists(old):
+                        os.remove(old)
+                    os.replace(exe, old)          # Windows allows renaming a running program
+                    try:
+                        os.replace(new, exe)
+                    except OSError:
+                        os.replace(old, exe)      # put the original back
+                        raise
+                except OSError:
+                    raise RuntimeError(
+                        f"OnlyScans can't replace itself in {os.path.dirname(exe)}. Move "
+                        "OnlyScans.exe to a folder you own, like Documents or the Desktop, and try "
+                        f"again, or download the new version from {u['page']}")
+        except Exception:
+            try:
+                os.remove(new)
+            except OSError:
+                pass
+            self.update_lock.release()
+            raise
+        def restart():
+            self.session.close()
+            os._exit(UPDATE_EXIT_CODE)
+        threading.Timer(1.0, restart).start()   # let this reply reach the browser first
+        return {"version": u["version"]}
 
     def set_key(self, key, remember):
         key = (key or "").strip()
@@ -2390,7 +2489,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             return self._send(403, {"error": "forbidden"})
         routes = {"/api/ports": self.app.ports, "/api/status": self.app.status.get,
-                  "/api/config": self.app.config, "/api/report": lambda: self.app.report}
+                  "/api/config": self.app.config, "/api/report": lambda: self.app.report,
+                  "/api/update": lambda: self.app.update}
         fn = routes.get(self.path)
         if not fn:
             return self._send(404, {"error": "not found"})
@@ -2416,6 +2516,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/guide_seen": a.guide_seen,
             "/api/chat": lambda: a.chat(body.get("question"), body.get("settings") or {}),
             "/api/chat/reset": a.chat_reset,
+            "/api/update/install": a.install_update,
         }
         fn = routes.get(self.path)
         if not fn:
@@ -2438,6 +2539,7 @@ def page_html(token):
 def serve(http_port=APP_PORT, open_browser=True):
     app = App()
     Handler.app = app
+    threading.Thread(target=app.check_update, daemon=True).start()
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", http_port), Handler)
     except OSError:
@@ -2445,7 +2547,7 @@ def serve(http_port=APP_PORT, open_browser=True):
     srv.daemon_threads = True
     url = f"http://127.0.0.1:{srv.server_address[1]}/"
     print("=" * 60)
-    print(f" OnlyScans is running at {url}")
+    print(f" OnlyScans {APP_VERSION} is running at {url}")
     print(" Your browser should open on its own. If it doesn't, open that address.")
     print(" Keep this window open while you use OnlyScans; close it to quit.")
     print("=" * 60)
@@ -2481,6 +2583,7 @@ def main():
     ap.add_argument("--http-port", type=int, default=APP_PORT, help="app: local web port")
     ap.add_argument("--no-browser", action="store_true", help="app: don't open the browser")
     ap.add_argument("--build-exe", action="store_true", help="package into OnlyScans.exe")
+    ap.add_argument("--version", action="version", version=f"OnlyScans {APP_VERSION}")
     ap.add_argument("--port", help="command-line scan: serial port (COM4, /dev/ttyUSB0) or 'auto'")
     ap.add_argument("--baud", type=int, help="adapter baud (auto-detected if omitted)")
     ap.add_argument("--list-ports", action="store_true", help="list serial ports and exit")
@@ -2590,6 +2693,11 @@ header .key { margin-left:auto; display:flex; align-items:center; gap:.5rem; fon
 header .key input[type=password] { width:260px; }
 .badge { font-size:.75rem; padding:.15rem .5rem; border-radius:10px; color:#fff; white-space:nowrap; }
 .b-none { background:#8a96a3; } .b-ok { background:var(--ok); } .b-warn { background:var(--warn); }
+.ver { font-size:.75rem; color:var(--muted); }
+#upd { display:none; background:#e8f3ec; border-bottom:1px solid #b9dcc6; padding:.45rem 1rem; font-size:.9rem; align-items:center; gap:.7rem; }
+#upd.on { display:flex; }
+#upd b { color:var(--ok); }
+#upd .sp { margin-left:auto; display:flex; gap:.4rem; }
 #busy { position:fixed; top:56px; left:0; right:0; background:var(--brand); color:#fff; padding:.35rem 1rem; font-size:.9rem; z-index:5; display:none; }
 #busy.on { display:block; }
 .spin { display:inline-block; width:.85em; height:.85em; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:sp .8s linear infinite; vertical-align:-1px; margin-right:.45rem; }
@@ -2656,6 +2764,7 @@ pre code { background:none; padding:0; }
 <body>
 <header>
   <h1>OnlyScans</h1>
+  <span class="ver" id="ver"></span>
   <button class="small" id="guideBtn">&#128214; Guide</button>
   <div class="key">
     <input type="password" id="key" placeholder="Anthropic API key (sk-ant-...)" autocomplete="off">
@@ -2663,6 +2772,9 @@ pre code { background:none; padding:0; }
     <span id="keyBadge" class="badge b-none">No key</span>
   </div>
 </header>
+<div id="upd"><span>&#11014;&#65039; <b id="updVer"></b> is available.</span>
+  <a href="#" id="updNotes">What's new</a>
+  <span class="sp"><button class="small" id="updLater">Later</button><button class="small primary" id="updBtn">Update now</button></span></div>
 <div id="busy"><span class="spin"></span><span id="busyMsg">Working ...</span></div>
 <main>
   <aside class="left">
@@ -2957,6 +3069,29 @@ async function ask(q) {
   finally { waiting = false; inflight--; setBusy(); renderChat(); }
 }
 
+// ---------- updates ----------
+let update = null;
+function showUpdate(u) {
+  update = u;
+  if (!u) return;
+  $("updVer").textContent = "OnlyScans " + u.version;
+  $("updBtn").textContent = u.can_install ? "Update now" : "Download";
+  $("upd").classList.add("on");
+}
+$("updLater").onclick = () => $("upd").classList.remove("on");
+$("updNotes").onclick = e => { e.preventDefault(); if (update) openModal(`<h2>What's new in ${esc(update.version)}</h2>${md(update.notes || "See the release page.")}<p><a href="${esc(update.page)}" target="_blank" rel="noopener">Release page</a></p>`); };
+$("updBtn").onclick = async () => {
+  if (!update) return;
+  if (!update.can_install) { window.open(update.url, "_blank"); return; }
+  if (inflight || waiting) return alert("Wait for the current scan or AI answer to finish first.");
+  if (!confirm(`Update to OnlyScans ${update.version}?\n\nIt downloads the new version (about 10 MB), then restarts and opens in a new browser tab.`)) return;
+  const r = await busy(() => api("/api/update/install", {}));
+  if (r) openModal(`<h2>Updating to ${esc(r.version)}</h2><p>OnlyScans is restarting with the new version. It will open in a new browser tab in a few seconds, and you can close this one.</p>`);
+};
+function pollUpdate(tries) {   // the check runs in the background right after launch
+  api("/api/update").then(u => { if (u) showUpdate(u); else if (tries > 0) setTimeout(() => pollUpdate(tries - 1), 3000); }).catch(() => {});
+}
+
 // ---------- start ----------
 buildTabs(); render(); renderChat();
 $("quick").innerHTML = Object.keys(QUICK).map(k => `<button>${esc(k)}</button>`).join("");
@@ -2977,9 +3112,11 @@ $("modalX").onclick = closeModal;
 $("modal").onclick = e => { if (e.target.id === "modal") closeModal(); };
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
 loadPorts();
+pollUpdate(4);
 api("/api/report").then(r => { if (r) { report = r; render(); renderChat(); } }).catch(() => {});
 api("/api/config").then(cfg => {
   showKey(cfg);
+  $("ver").textContent = cfg.version === "dev" ? "dev build" : "v" + cfg.version;
   if (!cfg.guide_seen) { $("guideBtn").click(); api("/api/guide_seen", {}); }
 }).catch(() => {});
 </script>
@@ -3118,6 +3255,16 @@ The panel on the right is an AI mechanic that uses Claude (`claude-sonnet-5-5`, 
 - **Codes (CSV):** one row per code, to open in Excel or read into R. It goes to your browser's Downloads folder.
 - **Full report (JSON):** everything from the scan, including live data and the raw log. Save this before you clear anything.
 - **Clear codes:** fix the cause first. Clearing erases the codes and freeze frame and resets the readiness monitors. If the fault is still there, the light comes back. Permanent codes don't clear this way.
+
+## Updates
+
+When a new version is released, OnlyScans shows a green bar at the top: **OnlyScans x.y.z is available**.
+
+- **What's new:** shows the release notes.
+- **Update now:** downloads the new version (about 10 MB) and checks it against GitHub's published size and checksum. If anything doesn't match, nothing is changed. It then swaps itself out and restarts, and the app opens in a new browser tab, so you can close the old one.
+- **Later:** hides the bar until the next launch.
+
+Your settings and saved API key carry over. The check happens once at each launch and is skipped quietly when there's no internet. If OnlyScans.exe is in a folder Windows won't let it change, such as Program Files, it tells you so: move it to Documents or the Desktop. The version you're running is shown next to the name at the top left.
 
 ## Troubleshooting
 

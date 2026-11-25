@@ -129,6 +129,16 @@ The panel on the right is an AI mechanic that uses Claude (`claude-sonnet-5-5`, 
 - **Full report (JSON):** everything from the scan, including live data and the raw log. Save this before you clear anything.
 - **Clear codes:** fix the cause first. Clearing erases the codes and freeze frame and resets the readiness monitors. If the fault is still there, the light comes back. Permanent codes don't clear this way.
 
+## Updates
+
+When a new version is released, OnlyScans shows a green bar at the top: **OnlyScans x.y.z is available**.
+
+- **What's new:** shows the release notes.
+- **Update now:** downloads the new version (about 10 MB) and checks it against GitHub's published size and checksum. If anything doesn't match, nothing is changed. It then swaps itself out and restarts, and the app opens in a new browser tab, so you can close the old one.
+- **Later:** hides the bar until the next launch.
+
+Your settings and saved API key carry over. The check happens once at each launch and is skipped quietly when there's no internet. If OnlyScans.exe is in a folder Windows won't let it change, such as Program Files, it tells you so: move it to Documents or the Desktop. The version you're running is shown next to the name at the top left.
+
 ## Troubleshooting
 
 | Problem | Try |

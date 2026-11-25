@@ -30,6 +30,9 @@ jobs:
         run: python -m py_compile onlyscans.py
 
       - name: Build the payload (Windows Python + pyserial + onlyscans.py)
+        env:
+          # releases get their tag (e.g. v1.2.0) stamped in, which drives the update check
+          ONLYSCANS_VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || 'dev' }}
         run: python scripts/build_payload.py
 
       - name: Build the launcher (OnlyScans.exe)
@@ -49,6 +52,7 @@ jobs:
           $env:LOCALAPPDATA = "$env:RUNNER_TEMP\appdata"
           .\OnlyScans.exe --list-ports
           if ($LASTEXITCODE -ne 0) { throw "OnlyScans.exe --list-ports failed" }
+          .\OnlyScans.exe --version
 
       - name: Build the test J2534 driver (32-bit)
         uses: ilammy/msvc-dev-cmd@v1
@@ -71,6 +75,27 @@ jobs:
           .\OnlyScans.exe --list-ports
           .\OnlyScans.exe --port "j2534:OnlyScans Test Device" --make toyota --json j2534.json
           python -c "import json; r = json.load(open('j2534.json')); codes = [c['code'] for c in r['codes']]; print('VIN', r['vin'], 'codes', codes, 'adapter', r['adapter']); assert r['vin'] == 'JTMBF4DV1AD000000', r['notes']; assert 'P0301' in codes, r['notes']; print('J2534 path OK')"
+
+      - name: Update test (an old build updates itself to a new one)
+        shell: pwsh
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          foreach ($v in "0.0.1", "0.0.2") {
+            $env:ONLYSCANS_VERSION = $v
+            python scripts/build_payload.py
+            if ($LASTEXITCODE -ne 0) { throw "payload $v failed" }
+            Push-Location launcher
+            $env:ONLYSCANS_PAYLOAD = (Resolve-Path ..\build\payload.tar.gz).Path
+            $env:ONLYSCANS_PAYLOAD_ID = (Get-Content ..\build\payload.id -Raw).Trim()
+            cargo build --release --locked
+            if ($LASTEXITCODE -ne 0) { throw "launcher $v failed" }
+            Pop-Location
+            New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\upd\$v" | Out-Null
+            Copy-Item launcher\target\release\onlyscans.exe "$env:RUNNER_TEMP\upd\$v\OnlyScans.exe"
+          }
+          python tests/update_test.py "$env:RUNNER_TEMP\upd\0.0.1\OnlyScans.exe" "$env:RUNNER_TEMP\upd\0.0.2\OnlyScans.exe"
+          if ($LASTEXITCODE -ne 0) { throw "update test failed" }
 
       - uses: actions/upload-artifact@v4
         with:

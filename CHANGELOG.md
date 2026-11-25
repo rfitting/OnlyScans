@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.0 - 2026-11-24
+
+- **Self-updating:** on launch OnlyScans checks GitHub for a newer release and shows a green bar. **Update now** downloads it, checks it against GitHub's size and SHA-256 checksum, swaps itself out and restarts. Copies of v1.1.0 or older need to download v1.2.0 by hand once.
+- The version is shown next to the name, and `OnlyScans.exe --version` prints it. Release builds take the version from the release tag.
+- New website: https://rfitting.github.io/OnlyScans/
+- Every build now tests a full update cycle with real Windows executables.
+
 ## v1.1.0 - 2026-11-24
 
 - **J2534 dealer tools supported:** Opus IVS Mongoose-Plus (including the Toyota MFC3), Ford VCM II, VCM 3 and VCMM, Honda GNA600, and any other J2534 v04.04 pass-thru device. They appear in the port list as `j2534:<device name>` once their driver is installed, and work for scanning, live data and the AI mechanic's tools. The app finds the vehicle's protocol on its own: CAN 11/29-bit, ISO 9141-2, ISO 14230 and J1850, as far as the tool supports them.
