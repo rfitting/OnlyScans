@@ -5,6 +5,7 @@
 - **Self-updating:** on launch OnlyScans checks GitHub for a newer release and shows a green bar. **Update now** downloads it, checks it against GitHub's size and SHA-256 checksum, swaps itself out and restarts. Copies of v1.1.0 or older need to download v1.2.0 by hand once.
 - The version is shown next to the name, and `OnlyScans.exe --version` prints it. Release builds take the version from the release tag.
 - New website: https://rfitting.github.io/OnlyScans/
+- New **About** button next to Guide: why OnlyScans exists, how to send a tip or a suggestion, and the version you're running.
 - Every build now tests a full update cycle with real Windows executables.
 
 ## v1.1.0 - 2026-11-24

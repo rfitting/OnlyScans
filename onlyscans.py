@@ -1890,6 +1890,10 @@ APP_PORT = 8765
 UPDATE_API = os.environ.get("ONLYSCANS_UPDATE_URL",
                             "https://api.github.com/repos/rfitting/OnlyScans/releases/latest")
 UPDATE_EXIT_CODE = 42   # tells the launcher to restart into the new OnlyScans.exe
+REPO_URL = "https://github.com/rfitting/OnlyScans"
+SITE_URL = "https://rfitting.github.io/OnlyScans/"
+VENMO_URL = "https://venmo.com/code?user_id=2727023667576832042&created=1795578049&printed=true"
+VENMO_QR_SVG = ('<svg role="img" aria-label="Venmo QR code for @Riley-Fitting" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 41 41" class="segno"><path fill="#fff" d="M0 0h41v41h-41z"/><path class="qrline" stroke="#000" d="M2 2.5h7m2 0h1m1 0h3m2 0h1m1 0h9m3 0h7m-37 1h1m5 0h1m4 0h1m2 0h1m1 0h3m1 0h1m3 0h4m2 0h1m5 0h1m-37 1h1m1 0h3m1 0h1m1 0h1m1 0h1m2 0h1m1 0h2m1 0h1m1 0h3m1 0h1m1 0h3m1 0h1m1 0h3m1 0h1m-37 1h1m1 0h3m1 0h1m1 0h3m4 0h4m1 0h1m1 0h1m2 0h3m2 0h1m1 0h3m1 0h1m-37 1h1m1 0h3m1 0h1m1 0h2m4 0h1m4 0h1m1 0h1m1 0h1m1 0h1m2 0h1m1 0h1m1 0h3m1 0h1m-37 1h1m5 0h1m1 0h3m5 0h1m3 0h3m3 0h3m1 0h1m5 0h1m-37 1h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7m-29 1h1m3 0h2m1 0h2m1 0h4m4 0h1m-27 1h1m1 0h5m3 0h1m1 0h1m1 0h2m1 0h2m6 0h1m1 0h1m2 0h5m-35 1h1m2 0h3m1 0h1m1 0h1m1 0h1m1 0h1m1 0h2m2 0h8m1 0h1m2 0h1m1 0h3m-36 1h3m1 0h1m1 0h1m1 0h2m1 0h4m2 0h1m3 0h2m1 0h1m1 0h5m1 0h2m1 0h2m-37 1h2m1 0h2m2 0h1m4 0h3m1 0h1m3 0h3m1 0h1m1 0h3m2 0h1m1 0h1m2 0h1m-36 1h1m1 0h1m1 0h2m2 0h3m1 0h2m1 0h3m1 0h1m1 0h2m1 0h1m1 0h1m1 0h4m1 0h3m-36 1h1m5 0h5m1 0h1m3 0h1m1 0h1m2 0h2m4 0h1m2 0h1m3 0h1m-33 1h1m1 0h2m1 0h3m1 0h5m4 0h1m5 0h1m2 0h4m2 0h1m-37 1h3m1 0h2m2 0h3m1 0h3m1 0h1m2 0h1m1 0h3m2 0h1m1 0h2m1 0h2m-32 1h1m4 0h1m1 0h4m2 0h2m1 0h1m2 0h1m2 0h1m1 0h1m3 0h2m1 0h1m1 0h3m-37 1h3m4 0h2m3 0h4m3 0h3m1 0h4m1 0h2m3 0h1m1 0h1m-36 1h1m5 0h1m2 0h1m3 0h3m2 0h1m6 0h3m1 0h2m1 0h1m1 0h3m-37 1h1m4 0h1m1 0h1m4 0h1m1 0h2m2 0h4m1 0h1m2 0h5m2 0h1m2 0h1m-36 1h2m1 0h1m1 0h2m1 0h1m5 0h8m2 0h3m1 0h2m1 0h1m1 0h1m-34 1h2m5 0h2m9 0h1m1 0h4m8 0h1m1 0h1m-36 1h1m2 0h4m1 0h2m2 0h1m2 0h1m4 0h1m1 0h1m2 0h4m1 0h4m2 0h1m-36 1h1m2 0h2m1 0h2m3 0h1m3 0h1m1 0h1m1 0h2m4 0h1m1 0h1m2 0h2m2 0h1m-36 1h1m3 0h1m1 0h1m2 0h5m1 0h1m1 0h1m1 0h1m2 0h1m2 0h1m2 0h5m1 0h3m-37 1h1m2 0h2m3 0h1m2 0h1m3 0h1m3 0h2m1 0h3m1 0h1m1 0h1m4 0h1m-34 1h1m1 0h2m1 0h3m1 0h1m1 0h2m1 0h5m1 0h1m1 0h1m2 0h1m1 0h3m3 0h4m-37 1h1m3 0h1m2 0h2m1 0h1m2 0h4m1 0h1m2 0h2m3 0h2m3 0h1m1 0h1m-34 1h1m2 0h1m1 0h8m2 0h6m1 0h1m1 0h9m1 0h1m1 0h1m-29 1h4m2 0h1m4 0h1m1 0h1m1 0h1m1 0h1m1 0h2m3 0h2m1 0h1m-36 1h7m2 0h1m5 0h1m1 0h2m2 0h1m2 0h1m3 0h1m1 0h1m1 0h1m1 0h1m1 0h1m-37 1h1m5 0h1m1 0h2m1 0h1m4 0h1m1 0h1m1 0h2m4 0h1m1 0h1m3 0h2m1 0h2m-37 1h1m1 0h3m1 0h1m1 0h1m1 0h6m1 0h1m4 0h1m2 0h1m1 0h6m1 0h3m-37 1h1m1 0h3m1 0h1m1 0h2m1 0h1m2 0h1m1 0h1m2 0h2m1 0h5m2 0h2m1 0h2m1 0h2m-37 1h1m1 0h3m1 0h1m1 0h5m1 0h5m2 0h1m3 0h2m1 0h1m4 0h1m1 0h2m-37 1h1m5 0h1m2 0h1m1 0h2m2 0h2m2 0h1m1 0h2m3 0h5m1 0h2m2 0h1m-37 1h7m1 0h5m2 0h4m3 0h1m1 0h3m2 0h2m1 0h1m1 0h3"/></svg>')  # QR code for VENMO_URL
 
 
 def parse_version(v):
@@ -2533,7 +2537,9 @@ class Handler(BaseHTTPRequestHandler):
 def page_html(token):
     guide = json.dumps(GUIDE_MD).replace("</", "<\\/")
     return (PAGE.replace("__TOKEN__", token).replace("__GUIDE__", guide)
-            .replace("__MODEL__", AI_MODEL))
+            .replace("__MODEL__", AI_MODEL).replace("__QR__", VENMO_QR_SVG)
+            .replace("__VENMO__", VENMO_URL.replace("&", "&amp;"))
+            .replace("__REPO__", REPO_URL).replace("__SITE__", SITE_URL))
 
 
 def serve(http_port=APP_PORT, open_browser=True):
@@ -2758,6 +2764,15 @@ pre code { background:none; padding:0; }
 .guide table { border-collapse:collapse; width:100%; font-size:.9rem; margin:.5rem 0 1rem; }
 .guide th, .guide td { border:1px solid var(--line); padding:.35rem .55rem; text-align:left; vertical-align:top; }
 .guide th { background:var(--soft); }
+.about { max-width:640px; margin:0 auto; line-height:1.6; }
+.about h1 { font-size:1.5rem; margin-top:0; }
+.about .sig { font-weight:600; margin-top:.2rem; }
+.about .tip { display:flex; gap:1.2rem; align-items:center; background:var(--soft); border:1px solid var(--line); border-radius:10px; padding:1rem 1.2rem; margin:1.4rem 0 1rem; }
+.about .tip .qr { width:150px; height:150px; flex:none; background:#fff; border-radius:6px; padding:4px; }
+.about .tip .qr svg { width:100%; height:100%; display:block; }
+.about .tip p { margin:.25rem 0; }
+.about .fine { font-size:.85rem; color:var(--muted); border-top:1px solid var(--line); padding-top:.7rem; }
+@media (max-width:560px) { .about .tip { flex-direction:column; text-align:center; } }
 @media (max-width:1150px) { main { grid-template-columns:250px minmax(0,1fr); } aside.chat { grid-column:1 / -1; height:70vh; } main { height:auto; } }
 </style>
 </head>
@@ -2766,6 +2781,7 @@ pre code { background:none; padding:0; }
   <h1>OnlyScans</h1>
   <span class="ver" id="ver"></span>
   <button class="small" id="guideBtn">&#128214; Guide</button>
+  <button class="small" id="aboutBtn">About</button>
   <div class="key">
     <input type="password" id="key" placeholder="Anthropic API key (sk-ant-...)" autocomplete="off">
     <label class="check" style="margin:0"><input type="checkbox" id="remember"> Remember</label>
@@ -2824,6 +2840,21 @@ pre code { background:none; padding:0; }
       <button class="small" id="resetBtn">New chat</button></div>
   </aside>
 </main>
+<template id="aboutTpl"><div class="about">
+<h1>About OnlyScans</h1>
+<p>I fix cars for family and friends, and I didn't want to pay for expensive diagnostic tools. So I built OnlyScans, a quality scan tool for anyone who can afford an OBD-II adapter.</p>
+<p>When you're fixing something yourself, you end up digging through technical service bulletins, forums and YouTube. A lot of that time goes to reading about problems you don't have, or to watching videos about the wrong engine. So I added an AI mechanic that already knows exactly what you're working on and what's wrong with it: your vehicle, your codes, your live data. Ask it a question and you get an answer about your car, not someone else's.</p>
+<p>OnlyScans is free and open source, but tips and suggestions are welcome.</p>
+<p class="sig">&mdash; Riley</p>
+<div class="tip">
+  <a class="qr" href="__VENMO__" target="_blank" rel="noopener" title="Open in Venmo">__QR__</a>
+  <div>
+    <p><strong>Tip with Venmo</strong><br>Scan with your phone's camera, or send to <strong>@Riley-Fitting</strong>.</p>
+    <p><strong>Suggestions or problems</strong><br><a href="__REPO__/issues" target="_blank" rel="noopener">Open an issue on GitHub</a>. Reports from people using J2534 tools are especially helpful.</p>
+  </div>
+</div>
+<p class="fine">OnlyScans <span class="aboutVer"></span> &middot; <a href="__SITE__" target="_blank" rel="noopener">Website</a> &middot; <a href="__REPO__" target="_blank" rel="noopener">Source on GitHub</a> &middot; MIT license<br>Not affiliated with any automaker, adapter maker, Venmo or Anthropic.</p>
+</div></template>
 <div id="modal"><div class="sheet"><button class="x" id="modalX" title="Close">&times;</button><div id="modalBody"></div></div></div>
 
 <script>
@@ -3108,6 +3139,10 @@ $("jsonBtn").onclick = saveJson;
 $("key").addEventListener("change", sendKey);
 $("remember").addEventListener("change", sendKey);
 $("guideBtn").onclick = () => openModal(`<div class="guide">${md(GUIDE)}</div>`);
+$("aboutBtn").onclick = () => {
+  openModal($("aboutTpl").innerHTML);
+  $("modalBody").querySelector(".aboutVer").textContent = $("ver").textContent || "";
+};
 $("modalX").onclick = closeModal;
 $("modal").onclick = e => { if (e.target.id === "modal") closeModal(); };
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
