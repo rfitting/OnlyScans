@@ -29,6 +29,10 @@ import zipfile
 PBS_TAG = "20261123"
 PY_VERSION = "3.12.16"
 PYSERIAL = "pyserial==3.5"
+# 32-bit: J2534 dealer-tool drivers (Mongoose, VCM II, VCMM, GNA600 ...) are mostly 32-bit
+# DLLs, and a process can only load DLLs of its own bitness. 32-bit Python runs fine on
+# 64-bit Windows and talks to serial (ELM327) adapters exactly the same.
+ARCH = "i686-pc-windows-msvc"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build")
@@ -40,13 +44,13 @@ TRIM_FILES = ["Lib/turtle.py", "DLLs/_tkinter.pyd", "DLLs/tcl86t.dll", "DLLs/tk8
 
 
 def python_url():
-    name = f"cpython-{PY_VERSION}+{PBS_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz"
+    name = f"cpython-{PY_VERSION}+{PBS_TAG}-{ARCH}-install_only.tar.gz"
     return f"https://github.com/astral-sh/python-build-standalone/releases/download/{PBS_TAG}/{name}"
 
 
 def fetch_python(dest):
     url = python_url()
-    print(f"Downloading Windows Python {PY_VERSION} ...\n  {url}")
+    print(f"Downloading Windows Python {PY_VERSION} ({ARCH}) ...\n  {url}")
     with urllib.request.urlopen(url, timeout=300) as r, open(dest, "wb") as f:
         shutil.copyfileobj(r, f)
     return dest

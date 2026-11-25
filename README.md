@@ -4,7 +4,7 @@
 
 **A free OBD-II scan tool for Windows that comes as one file, with a built-in AI mechanic.**
 
-Plug a USB OBD adapter into your car, double-click `OnlyScans.exe`, and it opens in your browser. It reads:
+Plug a USB OBD adapter or a J2534 dealer tool into your car, double-click `OnlyScans.exe`, and it opens in your browser. It reads:
 
 - trouble codes: stored, pending, permanent, and codes from modules like the ABS and airbag units
 - live sensor data
@@ -30,7 +30,9 @@ Nothing else needs to be installed, apart from the USB driver for your adapter.
 ## What you need
 
 - **A Windows 10 or 11 PC.**
-- **A USB OBD-II adapter** that speaks the ELM327 command set. It was built and tested around the **Vgate vLinker FS USB**, which needs the FTDI VCP driver and its switch set to **HS-CAN**. OBDLink and other ELM327/STN adapters also work.
+- **One of these adapters:**
+  - **A USB OBD-II adapter** that speaks the ELM327 command set. It was built and tested around the **Vgate vLinker FS USB**, which needs the FTDI VCP driver and its switch set to **HS-CAN**. OBDLink and other ELM327/STN adapters also work.
+  - **A J2534 pass-thru tool** with its 32-bit driver installed: **Opus IVS Mongoose-Plus** (any version, including the Toyota MFC3), **Ford VCM II, VCM 3 and VCMM**, **Honda GNA600**, or any other J2534 v04.04 device. These tools add Ford MS-CAN module reads where the tool supports them. See [GUIDE.md](GUIDE.md#which-adapter) for what each adapter type can do.
 - **For the AI mechanic (optional):** an [Anthropic API key](https://console.anthropic.com). Usage is billed to your own account, usually a few cents per question.
 
 ## What it reads
@@ -41,7 +43,8 @@ Nothing else needs to be installed, apart from the USB driver for your adapter.
 | Toyota / Lexus / Scion | Yes | CAN: known module addresses. Older: blink-code steps shown |
 | Honda / Acura | Yes | CAN: automatic module search. Older: proprietary/blink codes |
 | GM | Yes | CAN: automatic module search. About 1999–2007: experimental |
-| Chrysler / Dodge / Jeep / Ram | Yes | CAN: automatic module search. About 2002–2007: experimental. Earlier CCD-bus modules aren't reachable with this type of adapter |
+| Chrysler / Dodge / Jeep / Ram | Yes | CAN: automatic module search. About 2002–2007: experimental. Earlier CCD-bus modules aren't reachable |
+| Ford / Lincoln / Mercury | Yes | CAN: known modules on the main bus. MS-CAN comfort modules with a J2534 tool that supports MS-CAN. Older J1850 PWM: engine codes only |
 
 *Experimental* means the requests follow the published formats but haven't been confirmed on a real vehicle yet. Reports from real vehicles are welcome (see [Reporting a problem](#reporting-a-problem)).
 
@@ -57,16 +60,17 @@ Nothing else needs to be installed, apart from the USB driver for your adapter.
 ## How it's built
 
 ```
-onlyscans.py                  the whole app: OBD engine, local web server, interface, guide, AI mechanic
+onlyscans.py                  the whole app: OBD engine, J2534 support, local web server, interface, guide, AI mechanic
 scripts/build_payload.py      bundles a standalone Windows Python + pyserial + onlyscans.py
 launcher/                     small Rust program that carries that bundle inside OnlyScans.exe,
                               unpacks it once to %LOCALAPPDATA%\OnlyScans and starts the app
-.github/workflows/build.yml   builds OnlyScans.exe on GitHub's Windows machines
+.github/workflows/build.yml   builds OnlyScans.exe on GitHub's Windows machines and tests it
+tests/j2534_stub/             stand-in J2534 driver the build uses to test the J2534 path on Windows
 GUIDE.md                      user guide
 CHANGELOG.md                  what changed in each version
 ```
 
-`onlyscans.py` uses only Python's standard library plus `pyserial`. The bundled Python comes from [python-build-standalone](https://github.com/astral-sh/python-build-standalone).
+`onlyscans.py` uses only Python's standard library plus `pyserial`. The bundled Python is the 32-bit build from [python-build-standalone](https://github.com/astral-sh/python-build-standalone), because a program can only load J2534 drivers of its own bitness and most dealer-tool drivers are 32-bit. J2534 tools are driven through the maker's DLL via `ctypes`, behind the same command interface the ELM327 code uses, so both adapter types share all of the scanning logic.
 
 ### Making a release
 

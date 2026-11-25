@@ -50,6 +50,28 @@ jobs:
           .\OnlyScans.exe --list-ports
           if ($LASTEXITCODE -ne 0) { throw "OnlyScans.exe --list-ports failed" }
 
+      - name: Build the test J2534 driver (32-bit)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: J2534 test (scan through a stand-in pass-thru driver)
+        shell: pwsh
+        run: |
+          cl /nologo /LD /O2 tests\j2534_stub\stub.c /Fe:tests\j2534_stub\onlyscans_stub.dll /link /DEF:tests\j2534_stub\stub.def
+          if ($LASTEXITCODE -ne 0) { throw "stub driver didn't compile" }
+          $key = "HKLM:\SOFTWARE\WOW6432Node\PassThruSupport.04.04\OnlyScans Test Device"
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name Name -Value "OnlyScans Test Device" -Force | Out-Null
+          New-ItemProperty -Path $key -Name Vendor -Value "OnlyScans CI" -Force | Out-Null
+          New-ItemProperty -Path $key -Name FunctionLibrary -Value (Resolve-Path tests\j2534_stub\onlyscans_stub.dll).Path -Force | Out-Null
+          New-ItemProperty -Path $key -Name ISO15765 -Value 1 -PropertyType DWord -Force | Out-Null
+          New-ItemProperty -Path $key -Name CAN -Value 1 -PropertyType DWord -Force | Out-Null
+          $env:LOCALAPPDATA = "$env:RUNNER_TEMP\appdata"
+          .\OnlyScans.exe --list-ports
+          .\OnlyScans.exe --port "j2534:OnlyScans Test Device" --make toyota --json j2534.json
+          python -c "import json; r = json.load(open('j2534.json')); codes = [c['code'] for c in r['codes']]; print('VIN', r['vin'], 'codes', codes, 'adapter', r['adapter']); assert r['vin'] == 'JTMBF4DV1AD000000', r['notes']; assert 'P0301' in codes, r['notes']; print('J2534 path OK')"
+
       - uses: actions/upload-artifact@v4
         with:
           name: OnlyScans

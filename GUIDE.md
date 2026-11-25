@@ -1,6 +1,6 @@
 # OnlyScans guide
 
-OnlyScans reads trouble codes and sensor data from any 1996-or-newer car or truck through a vLinker FS USB (or another ELM327-type) adapter. It also has an AI mechanic that reads all of that data and suggests what to check and fix.
+OnlyScans reads trouble codes and sensor data from any 1996-or-newer car or truck through either a vLinker FS USB (or another ELM327-type) adapter, or a J2534 dealer tool such as the Mongoose-Plus, Ford VCM II / VCM 3 / VCMM or Honda GNA600. It also has an AI mechanic that reads all of that data and suggests what to check and fix.
 
 ## Starting OnlyScans
 
@@ -10,18 +10,38 @@ OnlyScans reads trouble codes and sensor data from any 1996-or-newer car or truc
 
 Keep the console window open while you use the app; closing it quits OnlyScans. If the browser doesn't open, go to the address shown in the console window (normally `http://127.0.0.1:8765`).
 
+## Which adapter
+
+- **vLinker FS / ELM327-type adapters** appear in the port list as a COM port marked **[OBD adapter]**.
+- **J2534 dealer tools** appear as **j2534:** followed by the device name, for example `j2534:Mongoose-Plus` or `j2534:VCM II`. Install the tool's own driver first:
+  - **Mongoose-Plus:** the Opus IVS driver package.
+  - **Ford VCM II:** its driver only comes with Ford IDS.
+  - **VCM 3:** Ford's VCM 3 driver.
+  - **VCMM:** the Bosch J2534 VCI driver.
+  - **GNA600:** the Honda/Bosch J2534 driver.
+
+  OnlyScans uses 32-bit drivers, which is what most of these tools install. A tool that only has a 64-bit driver shows a note in the port list.
+
+| | vLinker / ELM327 | J2534 tool |
+|---|---|---|
+| Engine codes, live data, freeze frame, monitor tests | Yes | Yes |
+| Module codes on CAN (Toyota, Honda, Chrysler, Ford) | Yes | Yes, usually faster and more reliable |
+| GM module codes on GMLAN | Yes | Not yet (GM sends them in a format the J2534 channel doesn't pass) |
+| Ford MS-CAN modules (climate, doors, audio) | No | Yes, if the tool supports MS-CAN (VCM II, VCM 3, VCMM) |
+| Older K-line and J1850 vehicles | Yes | Only if the tool has those protocols. Many single-make tools are CAN plus K-line only |
+
 ## Before you scan
 
 1. **Plug in the adapter.** The OBD port is under the dash on the driver's side, usually above the pedals. Connect the other end to a USB port on the laptop.
-2. **Set the vLinker switch to HS-CAN.** The MS-CAN position is only for Fords, and it hides the main bus on everything else.
+2. **vLinker only: set its switch to HS-CAN.** The MS-CAN position is only for Fords, and it hides the main bus on everything else. J2534 tools have no switch; OnlyScans selects the pins itself.
 3. **Turn the key to ON.** For codes, engine off is fine. For live sensor data, start the engine.
-4. **Close FORScan** or any other OBD program. Only one program can use the adapter at a time.
+4. **Close FORScan, Techstream, IDS/FDRS, HDS** or any other OBD program. Only one program can use the adapter at a time.
 
 If the adapter isn't listed in step 1 below, install the FTDI VCP driver from ftdichip.com, then unplug the adapter and plug it back in.
 
 ## 1. Connect
 
-- **Adapter port:** the vLinker is listed first and marked **[OBD adapter]**. Click **Refresh ports** if you plugged it in after opening the app.
+- **Adapter port:** J2534 tools are listed first (as **j2534:**...), then the vLinker, marked **[OBD adapter]**. Click **Refresh ports** if you plugged it in after opening the app.
 - **Test adapter:** checks that the adapter answers and reads the battery voltage at the OBD port.
   - Key on, engine off: about 12.2–12.8 V.
   - Engine running: about 13.5–14.7 V.
@@ -43,6 +63,7 @@ If the adapter isn't listed in step 1 below, install the FTDI VCP driver from ft
 | Honda / Acura | Yes | CAN: automatic module search. Older: proprietary or blink codes |
 | GM | Yes | CAN: automatic module search. About 1999–2007: experimental. Older: not reachable |
 | Chrysler / Dodge / Jeep / Ram | Yes | CAN: automatic module search. About 2002–2007: experimental. Earlier body modules are on the CCD bus and not reachable. 2018+: the security gateway may block some modules |
+| Ford / Lincoln / Mercury | Yes | CAN: known modules on the main bus (engine, ABS, airbag, cluster, body, SYNC and more). MS-CAN comfort modules with a J2534 tool that supports MS-CAN. Older J1850 PWM Fords: engine codes only |
 
 *Experimental* means the requests follow the published formats but haven't been confirmed on a real vehicle yet.
 
@@ -115,6 +136,9 @@ The panel on the right is an AI mechanic that uses Claude (`claude-sonnet-5-5`, 
 | Browser didn't open | Open the address shown in the console window, normally `http://127.0.0.1:8765` |
 | No ports listed | Install the FTDI VCP driver, replug the adapter, then click Refresh ports |
 | "Could not open port" | Close FORScan or any other OBD program |
+| J2534 tool isn't listed | Install its driver (for a VCM II, that means installing Ford IDS), plug it in, then click Refresh ports |
+| J2534 tool says "driver is 64-bit only" | That driver can't load in OnlyScans. Check the maker's site for a 32-bit J2534 driver |
+| "Unable to connect" with a J2534 tool on an older vehicle | The tool may not have that vehicle's protocol (J1850 or K-line). Use the vLinker for that vehicle |
 | "Vehicle did not answer" | Key ON, adapter pushed fully in, vLinker switch on HS-CAN |
 | Test adapter shows no voltage | Reseat the adapter, then check the fuse that feeds the OBD port |
 | Make unknown | The vehicle doesn't report a VIN. Pick the make and scan again |

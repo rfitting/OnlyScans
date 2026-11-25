@@ -61,6 +61,7 @@ MAKES = {
     "honda":    "Honda / Acura",
     "gm":       "GM (Chevrolet, GMC, Buick, Cadillac, Pontiac, Saturn, Oldsmobile)",
     "chrysler": "Chrysler / Dodge / Jeep / Ram",
+    "ford":     "Ford / Lincoln / Mercury",
     "other":    "Other / unknown make",
 }
 
@@ -71,6 +72,8 @@ WMI = {
               "SHH", "SHS", "2HK", "2HN", "JHL", "JHM", "JH4"],
     "gm": ["1G", "2G", "3G", "KL", "6G", "1GT", "1GC", "1GN", "1GK", "1G6", "5GA",
            "5GZ", "5Y2"],
+    "ford": ["1FA", "1FB", "1FC", "1FD", "1FM", "1FT", "2FA", "2FM", "2FT", "3FA", "3FM",
+             "3FT", "1LN", "1ME", "2LM", "5LM", "NM0", "WF0", "1ZV", "MAJ"],
     "chrysler": ["1C", "2C", "3C", "1J", "1B", "2B", "3B", "1D", "2D", "3D", "2A4", "2A8",
                  "ZAC", "1A4", "1A8", "3A4", "3A8"],
 }
@@ -116,8 +119,20 @@ CAN11_MODULES = {
     "honda": [(0x7E0, 0x7E8, "Engine (PGM-FI)"), (0x7E1, 0x7E9, "Transmission")],
     "gm": [(0x7E0, 0x7E8, "Engine (ECM)"), (0x7E2, 0x7EA, "Transmission (TCM)")],
     "chrysler": [(0x7E0, 0x7E8, "Engine (PCM)"), (0x7E1, 0x7E9, "Transmission (TCM)")],
+    "ford": [(0x7E0, 0x7E8, "Engine (PCM)"), (0x7E1, 0x7E9, "Transmission (TCM)"),
+             (0x760, 0x768, "ABS"), (0x737, 0x73F, "Airbag (RCM)"),
+             (0x730, 0x738, "Power steering (PSCM)"), (0x720, 0x728, "Instrument cluster (IPC)"),
+             (0x726, 0x72E, "Body (BCM)"), (0x7D0, 0x7D8, "SYNC (APIM)"),
+             (0x716, 0x71E, "Gateway (GWM)"), (0x736, 0x73E, "Parking aid (PAM)"),
+             (0x706, 0x70E, "Camera (IPMA)"), (0x765, 0x76D, "Seat sensor (OCSM)")],
     "other": [(0x7E0, 0x7E8, "Engine"), (0x7E1, 0x7E9, "Transmission")],
 }
+# Ford medium-speed CAN (MS-CAN, OBD pins 3 and 11, 125 kbps): comfort and body modules.
+FORD_MS_MODULES = [(0x733, 0x73B, "Climate control (HVAC)"), (0x740, 0x748, "Driver door (DDM)"),
+                   (0x741, 0x749, "Passenger door (PDM)"), (0x7A7, 0x7AF, "Front controls (FCIM)"),
+                   (0x727, 0x72F, "Audio (ACM)"), (0x731, 0x739, "Remote function (RFA)"),
+                   (0x744, 0x74C, "Driver seat (DSM)"), (0x775, 0x77D, "Rear climate (RHVAC)")]
+
 # GMLAN unacknowledged (UUDT) reply ids used by service 0xA9
 GM_UUDT = {0x7E0: 0x5E8, 0x7E2: 0x5EA}
 
@@ -287,6 +302,10 @@ PRE_CAN_NOTES = {
         "airbag modules on the CCD bus, which ELM-type cables can't reach. Many 1996+ "
         "Chrysler products show engine codes on the odometer: turn the key ON-OFF-ON-OFF-ON "
         "without cranking."),
+    "ford": (
+        "Pre-CAN Ford/Lincoln/Mercury (J1850 PWM, roughly 1996-2004): engine/emissions codes "
+        "are read; module codes on Ford's older SCP network use Ford-specific requests this "
+        "version doesn't send."),
     "other": (
         "Pre-CAN vehicle: only engine/emissions codes are read. Module codes on pre-CAN "
         "vehicles use make-specific protocols."),
@@ -370,7 +389,12 @@ def find_ports():
 
 def list_ports():
     ports = find_ports()
-    if not ports:
+    devs = j2534_devices()
+    for d in devs:
+        note = "" if python_bits() in d["libs"] else \
+            f" (driver is {'/'.join(f'{b}-bit' for b in d['libs']) or 'unknown'} only)"
+        print(f"{J2534_PREFIX}{d['name']}\tJ2534 pass-thru: {d['name']}{note}\tOBD adapter")
+    if not ports and not devs:
         print("No serial ports found")
     for p in ports:
         print(f"{p.device}\t{p.description}\t{'OBD adapter' if is_obd_adapter(p) else ''}")
@@ -378,10 +402,539 @@ def list_ports():
 
 def auto_port():
     hits = [p for p in find_ports() if is_obd_adapter(p)]
+    if not hits and j2534_devices():
+        return J2534_PREFIX + j2534_devices()[0]["name"]
     if not hits:
         sys.exit("No vLinker/OBD adapter found. Is it plugged in and is the FTDI driver "
                  "installed? Use --list-ports and pass --port explicitly.")
     return hits[0].device
+
+
+# ==========================================================================
+# J2534 pass-thru adapters (Mongoose-Plus, CarDAQ, OpenPort, ...)
+# ==========================================================================
+#
+# A J2534 device is driven through its maker's Windows DLL instead of a serial port.
+# J2534Adapter accepts the same ELM327-style commands the Scanner already sends (ATSH,
+# ATCRA, ATSP, hex requests ...) and turns them into J2534 calls, then formats replies
+# the way an ELM327 would. Everything above and below this section works unchanged.
+
+J2534_PREFIX = "j2534:"
+J2534_PROTO = {"J1850VPW": 1, "J1850PWM": 2, "ISO9141": 3, "ISO14230": 4, "CAN": 5,
+               "ISO15765": 6, "ISO15765_PS": 0x8005}
+J_SET_CONFIG, J_J1962_PINS = 2, 0x8001
+J_CAN_29BIT_ID, J_ISO15765_FRAME_PAD = 0x100, 0x40
+J_PASS_FILTER, J_FLOW_CONTROL_FILTER = 1, 3
+J_READ_VBATT, J_FIVE_BAUD_INIT, J_FAST_INIT, J_CLEAR_RX_BUFFER = 3, 4, 5, 8
+J_TX_MSG_TYPE, J_START_OF_MESSAGE, J_TX_DONE = 0x01, 0x02, 0x08
+J_ERR_TIMEOUT, J_ERR_BUFFER_EMPTY = 0x09, 0x10
+
+# ELM protocol number -> (J2534 protocol, connect flags, baud)
+J2534_FOR_ELM = {
+    "6": ("ISO15765", 0, 500000), "7": ("ISO15765", J_CAN_29BIT_ID, 500000),
+    "8": ("ISO15765", 0, 250000), "9": ("ISO15765", J_CAN_29BIT_ID, 250000),
+    "2": ("J1850VPW", 0, 10400), "1": ("J1850PWM", 0, 41600),
+    "3": ("ISO9141", 0, 10400), "5": ("ISO14230", 0, 10400), "4": ("ISO14230", 0, 10400),
+    "M": ("ISO15765_PS", 0, 125000),   # Ford MS-CAN on pins 3/11 (J2534-2)
+}
+J2534_CAN = {6, 0x8005}
+J2534_SEARCH = ["6", "7", "8", "9", "2", "1", "3", "5"]
+J2534_29BIT_ECUS = [0x10, 0x11, 0x18, 0x1A, 0x28, 0x58]   # functional-reply filters
+
+
+class J2534Error(Exception):
+    def __init__(self, what, code, detail=""):
+        self.code = code
+        super().__init__(f"{what} failed (J2534 error 0x{code:02X}{': ' + detail if detail else ''})")
+
+
+def _pe_bits(path):
+    """32 or 64 for a Windows DLL, from its PE header."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4096)
+        off = int.from_bytes(head[0x3C:0x40], "little")
+        return {0x14C: 32, 0x8664: 64}.get(int.from_bytes(head[off + 4:off + 6], "little"))
+    except Exception:
+        return None
+
+
+def j2534_devices():
+    """Installed J2534 v04.04 drivers, read from both the 32- and 64-bit registry views."""
+    if os.name != "nt":
+        return []
+    import winreg
+    found = {}
+    for view in (winreg.KEY_WOW64_32KEY, winreg.KEY_WOW64_64KEY):
+        try:
+            root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\PassThruSupport.04.04",
+                                  0, winreg.KEY_READ | view)
+        except OSError:
+            continue
+        i = 0
+        while True:
+            try:
+                sub = winreg.EnumKey(root, i)
+            except OSError:
+                break
+            i += 1
+            vals = {}
+            try:
+                key = winreg.OpenKey(root, sub, 0, winreg.KEY_READ | view)
+                j = 0
+                while True:
+                    try:
+                        n, v, _ = winreg.EnumValue(key, j)
+                    except OSError:
+                        break
+                    vals[n.upper()] = v
+                    j += 1
+            except OSError:
+                continue
+            lib = vals.get("FUNCTIONLIBRARY")
+            if not lib:
+                continue
+            name = str(vals.get("NAME") or sub)
+            dev = found.setdefault(name, {"name": name, "vendor": str(vals.get("VENDOR", "")),
+                                          "libs": {}, "protocols": set()})
+            bits = _pe_bits(lib)
+            if bits:
+                dev["libs"][bits] = lib
+            for p in J2534_PROTO:
+                if vals.get(p) == 1:
+                    dev["protocols"].add(p)
+    return sorted(found.values(), key=lambda d: d["name"])
+
+
+def python_bits():
+    import struct
+    return struct.calcsize("P") * 8
+
+
+class J2534Api:
+    """Thin ctypes binding for a J2534 v04.04 DLL."""
+
+    def __init__(self, dll_path):
+        import ctypes
+        from ctypes import c_ulong, c_void_p, c_char_p, POINTER, byref, Structure, c_ubyte
+        self.ct, self.byref, self.c_ulong = ctypes, byref, c_ulong
+
+        class Msg(Structure):
+            _fields_ = [("ProtocolID", c_ulong), ("RxStatus", c_ulong), ("TxFlags", c_ulong),
+                        ("Timestamp", c_ulong), ("DataSize", c_ulong),
+                        ("ExtraDataIndex", c_ulong), ("Data", c_ubyte * 4128)]
+
+        class SByteArray(Structure):
+            _fields_ = [("NumOfBytes", c_ulong), ("BytePtr", POINTER(c_ubyte))]
+
+        self.Msg, self.SByteArray = Msg, SByteArray
+        d = self.dll = ctypes.WinDLL(dll_path)
+        sig = {
+            "PassThruOpen": [c_void_p, POINTER(c_ulong)],
+            "PassThruClose": [c_ulong],
+            "PassThruConnect": [c_ulong, c_ulong, c_ulong, c_ulong, POINTER(c_ulong)],
+            "PassThruDisconnect": [c_ulong],
+            "PassThruReadMsgs": [c_ulong, POINTER(Msg), POINTER(c_ulong), c_ulong],
+            "PassThruWriteMsgs": [c_ulong, POINTER(Msg), POINTER(c_ulong), c_ulong],
+            "PassThruStartMsgFilter": [c_ulong, c_ulong, POINTER(Msg), POINTER(Msg),
+                                       POINTER(Msg), POINTER(c_ulong)],
+            "PassThruStopMsgFilter": [c_ulong, c_ulong],
+            "PassThruIoctl": [c_ulong, c_ulong, c_void_p, c_void_p],
+            "PassThruReadVersion": [c_ulong, c_char_p, c_char_p, c_char_p],
+            "PassThruGetLastError": [c_char_p],
+        }
+        for fn, args in sig.items():
+            f = getattr(d, fn)
+            f.argtypes, f.restype = args, ctypes.c_long
+
+    def _err(self, what, rc):
+        buf = self.ct.create_string_buffer(256)
+        try:
+            self.dll.PassThruGetLastError(buf)
+        except Exception:
+            pass
+        raise J2534Error(what, rc, buf.value.decode(errors="ignore").strip())
+
+    def _msg(self, proto, data=b"", tx_flags=0):
+        m = self.Msg()
+        m.ProtocolID, m.TxFlags, m.DataSize = proto, tx_flags, len(data)
+        for i, b in enumerate(data):
+            m.Data[i] = b
+        return m
+
+    def open(self):
+        dev = self.c_ulong()
+        rc = self.dll.PassThruOpen(None, self.byref(dev))
+        if rc:
+            self._err("PassThruOpen", rc)
+        return dev.value
+
+    def close(self, dev):
+        self.dll.PassThruClose(dev)
+
+    def connect(self, dev, proto, flags, baud):
+        ch = self.c_ulong()
+        rc = self.dll.PassThruConnect(dev, proto, flags, baud, self.byref(ch))
+        if rc:
+            self._err("PassThruConnect", rc)
+        return ch.value
+
+    def disconnect(self, ch):
+        self.dll.PassThruDisconnect(ch)
+
+    def start_filter(self, ch, ftype, proto, mask, pattern, flow=None, tx_flags=0):
+        fid = self.c_ulong()
+        fc = self.byref(self._msg(proto, flow, tx_flags)) if flow is not None else None
+        rc = self.dll.PassThruStartMsgFilter(ch, ftype, self.byref(self._msg(proto, mask, tx_flags)),
+                                             self.byref(self._msg(proto, pattern, tx_flags)),
+                                             fc, self.byref(fid))
+        if rc:
+            self._err("PassThruStartMsgFilter", rc)
+        return fid.value
+
+    def stop_filter(self, ch, fid):
+        self.dll.PassThruStopMsgFilter(ch, fid)
+
+    def write(self, ch, proto, data, tx_flags=0, timeout=500):
+        n = self.c_ulong(1)
+        rc = self.dll.PassThruWriteMsgs(ch, self.byref(self._msg(proto, data, tx_flags)),
+                                        self.byref(n), timeout)
+        if rc:
+            self._err("PassThruWriteMsgs", rc)
+
+    def read(self, ch, timeout):
+        """One message as (rx_status, bytes), or None when nothing arrived."""
+        m, n = self.Msg(), self.c_ulong(1)
+        rc = self.dll.PassThruReadMsgs(ch, self.byref(m), self.byref(n), timeout)
+        if rc in (J_ERR_TIMEOUT, J_ERR_BUFFER_EMPTY) or (rc == 0 and n.value == 0):
+            return None
+        if rc:
+            self._err("PassThruReadMsgs", rc)
+        return m.RxStatus, bytes(m.Data[:m.DataSize])
+
+    def ioctl(self, ch, ioctl_id):
+        rc = self.dll.PassThruIoctl(ch, ioctl_id, None, None)
+        if rc:
+            self._err(f"PassThruIoctl({ioctl_id})", rc)
+
+    def set_config(self, ch, params):
+        c = self.ct
+
+        class SConfig(c.Structure):
+            _fields_ = [("Parameter", c.c_ulong), ("Value", c.c_ulong)]
+
+        class SConfigList(c.Structure):
+            _fields_ = [("NumOfParams", c.c_ulong), ("ConfigPtr", c.POINTER(SConfig))]
+
+        arr = (SConfig * len(params))(*[SConfig(k, v) for k, v in params])
+        lst = SConfigList(len(params), c.cast(arr, c.POINTER(SConfig)))
+        rc = self.dll.PassThruIoctl(ch, J_SET_CONFIG, self.byref(lst), None)
+        if rc:
+            self._err("SET_CONFIG", rc)
+
+    def vbatt(self, dev):
+        mv = self.c_ulong()
+        rc = self.dll.PassThruIoctl(dev, J_READ_VBATT, None, self.byref(mv))
+        if rc:
+            self._err("READ_VBATT", rc)
+        return mv.value
+
+    def five_baud_init(self, ch, addr=0x33):
+        c = self.ct
+        inb, outb = (c.c_ubyte * 1)(addr), (c.c_ubyte * 2)()
+        sin = self.SByteArray(1, c.cast(inb, c.POINTER(c.c_ubyte)))
+        sout = self.SByteArray(2, c.cast(outb, c.POINTER(c.c_ubyte)))
+        rc = self.dll.PassThruIoctl(ch, J_FIVE_BAUD_INIT, self.byref(sin), self.byref(sout))
+        if rc:
+            self._err("5-baud init", rc)
+        return bytes(outb)
+
+    def fast_init(self, ch, proto, data):
+        out = self._msg(proto)
+        rc = self.dll.PassThruIoctl(ch, J_FAST_INIT, self.byref(self._msg(proto, data)),
+                                    self.byref(out))
+        if rc:
+            self._err("fast init", rc)
+        return bytes(out.Data[:out.DataSize])
+
+    def version(self, dev):
+        fw, dll, api = (self.ct.create_string_buffer(80) for _ in range(3))
+        if self.dll.PassThruReadVersion(dev, fw, dll, api):
+            return "", "", ""
+        return tuple(x.value.decode(errors="ignore") for x in (fw, dll, api))
+
+
+def _j1850_crc(data):
+    crc = 0xFF
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1D) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+    return crc ^ 0xFF
+
+
+class J2534Adapter:
+    """Looks like an ELM327 to the Scanner; talks J2534 to the device."""
+
+    def __init__(self, port, api=None, protocols=None):
+        self.port, self.baud, self.log = port, "J2534", []
+        self.name = port[len(J2534_PREFIX):]
+        self.vendor, self.lib = "", "(test driver)"
+        if api is None:
+            dev = next((d for d in j2534_devices() if d["name"] == self.name), None)
+            if not dev:
+                sys.exit(f"The J2534 device '{self.name}' isn't installed on this PC. Install its "
+                         "driver, plug it in, then click Refresh ports.")
+            bits = python_bits()
+            self.lib = dev["libs"].get(bits)
+            if not self.lib:
+                other = ", ".join(f"{b}-bit" for b in dev["libs"]) or "unknown"
+                sys.exit(f"The {self.name} driver is {other} only, but this copy of OnlyScans is "
+                         f"{bits}-bit, so Windows can't load it.")
+            api, self.vendor = J2534Api(self.lib), dev["vendor"]
+            protocols = dev["protocols"]
+        self.api = api
+        self.protocols = set(protocols or J2534_PROTO)
+        try:
+            self.dev = api.open()
+        except J2534Error as e:
+            sys.exit(f"Couldn't open {self.name}: {e}. Is it plugged into the PC and the vehicle?")
+        self.fw = (api.version(self.dev) or ("",))[0]
+        self.ch = None
+        self._reset()
+
+    # -- housekeeping -----------------------------------------------------------
+    def _reset(self):
+        self._disconnect()
+        self.want, self.proto = None, None
+        self.hdr, self.cra, self.cp, self.st_ms = None, None, 0x18, 200
+        self.kline_last = 0.0
+
+    def _disconnect(self):
+        if self.ch is not None:
+            try:
+                self.api.disconnect(self.ch)
+            except Exception:
+                pass
+        self.ch, self.proto, self.phys = None, None, {}
+
+    def pause(self, seconds):
+        time.sleep(seconds)
+
+    def close(self):
+        self._disconnect()
+        try:
+            self.api.close(self.dev)
+        except Exception:
+            pass
+
+    # -- ELM-style entry point ---------------------------------------------------------
+    def raw(self, cmd, timeout=5.0):
+        c = cmd.upper().replace(" ", "")
+        try:
+            out = self._at(c[2:]) if c.startswith("AT") else self._request(c)
+        except J2534Error as e:
+            self._disconnect()
+            out = [f"BUS ERROR ({e})"]
+        self.log.append({"tx": cmd, "rx": out})
+        return out
+
+    def _at(self, a):
+        if a in ("Z", "I", "WS", "D"):
+            if a in ("Z", "WS", "D"):
+                self._reset()
+            return [f"J2534 {self.name}" + (f" fw {self.fw}" if self.fw else "")]
+        if a == "@1":
+            return [f"{self.vendor} {self.name}, driver {self.lib}".strip()]
+        if a == "RV":
+            try:
+                return [f"{self.api.vbatt(self.dev) / 1000:.1f}V"]
+            except J2534Error as e:
+                return [f"? ({e})"]
+        if a == "DPN":
+            return ["A" + (self.proto or "0")]
+        if a.startswith("SP") or a.startswith("TP"):
+            p = a[2:].lstrip("A") or "0"
+            if p not in J2534_FOR_ELM and p != "0":
+                return ["?"]
+            if p == "M" and not self._connect("M"):   # check the device can do MS-CAN now
+                return ["?"]
+            want = None if p == "0" else p
+            if want != self.proto:
+                self._disconnect()
+            self.want = want
+            return ["OK"]
+        if a.startswith("SH"):
+            self.hdr = a[2:]
+        elif a.startswith("CRA"):
+            self.cra = a[3:] or None
+        elif a.startswith("CP"):
+            self.cp = int(a[2:] or "18", 16)
+        elif a.startswith("ST"):
+            self.st_ms = max(int(a[2:] or "32", 16) * 4, 40)
+        return ["OK"]
+
+    def _request(self, c):
+        try:
+            data = bytes.fromhex(c)
+        except ValueError:
+            return ["?"]
+        if self.ch is None:
+            for p in ([self.want] if self.want else J2534_SEARCH):
+                if self._connect(p):
+                    lines = self._send(data)
+                    if self.want or lines != ["NO DATA"]:
+                        return (["SEARCHING..."] if not self.want else []) + lines
+                    self._disconnect()
+            return ["UNABLE TO CONNECT"]
+        return self._send(data)
+
+    # -- connecting ------------------------------------------------------------------
+    def _connect(self, p):
+        jname, flags, baud = J2534_FOR_ELM[p]
+        if jname not in self.protocols and not jname.endswith("_PS"):
+            return False
+        jp = J2534_PROTO[jname]
+        try:
+            self.ch = self.api.connect(self.dev, jp, flags, baud)
+            self.proto, self.jp, self.phys = p, jp, {}
+            if jname == "ISO15765_PS":
+                self.api.set_config(self.ch, [(J_J1962_PINS, 0x030B)])   # CAN on pins 3 and 11
+            if jp in J2534_CAN:
+                if flags & J_CAN_29BIT_ID:
+                    pairs = [(0x18DAF100 | e, 0x18DA00F1 | (e << 8)) for e in J2534_29BIT_ECUS]
+                else:
+                    pairs = [(0x7E8 + i, 0x7E0 + i) for i in range(8)]
+                for rx, tx in pairs:
+                    self._fc_filter(rx, tx)
+            else:
+                self.api.start_filter(self.ch, J_PASS_FILTER, jp, b"\x00", b"\x00")
+                if jname in ("ISO9141", "ISO14230"):
+                    self._kline_init()
+            return True
+        except J2534Error:
+            self._disconnect()
+            return False
+
+    def _kline_init(self):
+        if self.jp == J2534_PROTO["ISO9141"]:
+            self.api.five_baud_init(self.ch, 0x33)
+        else:
+            self.api.fast_init(self.ch, self.jp, bytes([0xC1, 0x33, 0xF1, 0x81]))
+        self.kline_last = time.time()
+
+    def _is29(self):
+        return J2534_FOR_ELM[self.proto][1] & J_CAN_29BIT_ID
+
+    def _fc_filter(self, rx, tx):
+        size = 4
+        tx_flags = J_ISO15765_FRAME_PAD | (J_CAN_29BIT_ID if self._is29() else 0)
+        return self.api.start_filter(self.ch, J_FLOW_CONTROL_FILTER, self.jp,
+                                     b"\xff" * size, rx.to_bytes(size, "big"),
+                                     tx.to_bytes(size, "big"), tx_flags)
+
+    def _ensure_phys(self, rx, tx):
+        functional = {(0x7E8 + i, 0x7E0 + i) for i in range(8)} | {
+            (0x18DAF100 | e, 0x18DA00F1 | (e << 8)) for e in J2534_29BIT_ECUS}
+        if (rx, tx) in functional or (rx, tx) in self.phys:
+            return
+        while len(self.phys) >= 1:  # one module at a time keeps us well under the filter limit
+            old = next(iter(self.phys))
+            self.api.stop_filter(self.ch, self.phys.pop(old))
+        self.phys[(rx, tx)] = self._fc_filter(rx, tx)
+
+    # -- sending -----------------------------------------------------------------------
+    def _send(self, data):
+        if self.jp in J2534_CAN:
+            return self._send_can(data)
+        return self._send_line(data)
+
+    def _send_can(self, data):
+        is29 = self._is29()
+        hdr = (self.hdr or "").upper()
+        if is29:
+            functional = len(hdr) != 6
+            tx = 0x18DB33F1 if functional else (self.cp << 24) | int(hdr, 16)
+            rx = int(self.cra, 16) if self.cra else (None if functional else
+                                                     0x18DAF100 | ((tx >> 8) & 0xFF))
+        else:
+            tx = int(hdr, 16) if hdr and len(hdr) <= 3 else 0x7DF
+            functional = tx == 0x7DF
+            rx = int(self.cra, 16) if self.cra else (None if functional else tx + 8)
+        if not functional and rx is not None:
+            self._ensure_phys(rx, tx)
+        self.api.ioctl(self.ch, J_CLEAR_RX_BUFFER)
+        flags = J_ISO15765_FRAME_PAD | (J_CAN_29BIT_ID if is29 else 0)
+        self.api.write(self.ch, self.jp, tx.to_bytes(4, "big") + data, flags)
+        lines = []
+        for payload in self._collect(150):
+            rid, body = int.from_bytes(payload[:4], "big"), list(payload[4:])
+            if rx is not None and rid != rx:
+                continue
+            lines += self._elm_can_lines(rid, body, is29)
+        return lines or ["NO DATA"]
+
+    def _send_line(self, data):
+        jp = self.jp
+        if jp in (J2534_PROTO["ISO9141"], J2534_PROTO["ISO14230"]):
+            if time.time() - self.kline_last > 4.0:   # K-line link drops after ~5 s idle
+                self._kline_init()
+            if jp == J2534_PROTO["ISO14230"]:
+                hdr = bytes([0xC0 | len(data), 0x33, 0xF1])
+            else:
+                hdr = bytes.fromhex(self.hdr) if self.hdr and len(self.hdr) == 6 else b"\x68\x6A\xF1"
+        else:
+            default = "686AF1" if jp == J2534_PROTO["J1850VPW"] else "616AF1"
+            hdr = bytes.fromhex(self.hdr if self.hdr and len(self.hdr) == 6 else default)
+        self.api.ioctl(self.ch, J_CLEAR_RX_BUFFER)
+        self.api.write(self.ch, jp, hdr + data)
+        self.kline_last = time.time()
+        lines = []
+        for msg in self._collect(300):
+            b = list(msg)
+            if len(b) < 4:
+                continue
+            if jp in (J2534_PROTO["ISO9141"], J2534_PROTO["ISO14230"]):
+                if (sum(b[:-1]) & 0xFF) != b[-1]:
+                    b.append(sum(b) & 0xFF)           # add the checksum the parser expects
+            elif _j1850_crc(b[:-1]) != b[-1]:
+                b.append(_j1850_crc(b))
+            lines.append(" ".join(f"{x:02X}" for x in b))
+        return lines or ["NO DATA"]
+
+    def _collect(self, min_ms):
+        """Read replies until the line has been quiet for the response timeout (ATST)."""
+        window = max(self.st_ms, min_ms) / 1000
+        quiet_until, hard_stop, out = time.time() + window, time.time() + 30, []
+        while time.time() < min(quiet_until, hard_stop):
+            got = self.api.read(self.ch, 20)
+            if not got:
+                continue
+            status, data = got
+            if status & J_TX_MSG_TYPE or status & J_TX_DONE:
+                continue
+            quiet_until = time.time() + window
+            if status & J_START_OF_MESSAGE or not data:
+                continue
+            body = data[4:] if self.jp in J2534_CAN else data[3:]
+            if len(body) >= 3 and body[0] == 0x7F and body[2] == 0x78:   # response pending
+                quiet_until = time.time() + 5
+            out.append(data)
+        return out
+
+    @staticmethod
+    def _elm_can_lines(rid, payload, is29):
+        """Re-frame a reassembled reply as ELM327 prints it with headers on (ATH1 ATS1)."""
+        rid_s = " ".join(f"{x:02X}" for x in rid.to_bytes(4, "big")) if is29 else f"{rid:03X}"
+        if len(payload) <= 7:
+            frames = [[len(payload)] + payload]
+        else:
+            frames = [[0x10 | (len(payload) >> 8), len(payload) & 0xFF] + payload[:6]]
+            rest, seq = payload[6:], 1
+            while rest:
+                frames.append([0x20 | (seq & 0xF)] + rest[:7])
+                rest, seq = rest[7:], seq + 1
+        return [rid_s + " " + " ".join(f"{x:02X}" for x in f + [0] * (8 - len(f))) for f in frames]
 
 
 # ==========================================================================
@@ -428,7 +981,8 @@ class Scanner:
             raise RuntimeError(
                 f"Vehicle did not answer 0100 ({joined}). Check: key ON; adapter fully "
                 "seated; vLinker FS switch set to HS-CAN (the MS-CAN position is for Fords "
-                "only and hides the main CAN bus).")
+                "only and hides the main CAN bus); for a J2534 tool, that it supports this "
+                "vehicle's protocol (many dealer tools have no J1850 or K-line).")
         return adapter
 
     def _set_protocol_state(self, p):
@@ -747,6 +1301,28 @@ class Scanner:
             results.append(e)
         self._restore()
         return results
+
+    def read_ms_can(self, modules, sweep=False):
+        """Ford MS-CAN (pins 3/11, 125 kbps). Returns None if the adapter can't do it."""
+        saved = self.protocol
+        if not isinstance(self.io, J2534Adapter) or self.at("ATSPM") != ["OK"]:
+            return None                     # ELM-type adapters can't switch to pins 3/11
+        try:
+            mods = list(modules)
+            if sweep:
+                known = {m[0] for m in mods}
+                ids = [a for a in range(0x700, 0x7F8) if a != 0x7DF]
+                mods += [(r, x, f"MS-CAN module @ {r:03X}")
+                         for r, x in self.sweep_can11(ids, lambda r: r + 8, "MS-CAN")
+                         if r not in known]
+            res = self.read_can11(mods, "ford")
+            for r in res:
+                r["module"] += " [MS-CAN]"
+            return res
+        finally:
+            self.at(f"ATSP{saved}")
+            self._set_protocol_state(saved)
+            self._restore()
 
     def _enter_can29(self):
         if self.protocol in ("6", "8"):
@@ -1081,6 +1657,17 @@ def plan_and_read_modules(sc, make, sweep, report, say):
         say(f"Reading {len(modules)} modules on 11-bit CAN ...")
         results += sc.read_can11(modules, make)
 
+        if make == "ford":
+            say("Reading Ford MS-CAN modules (pins 3/11) ...")
+            ms = sc.read_ms_can(FORD_MS_MODULES, sweep)
+            if ms is None:
+                notes.append("Ford MS-CAN modules (climate, doors, audio and other comfort "
+                             "modules) weren't read: this adapter can't switch to OBD pins 3/11. "
+                             "They need a J2534 tool that supports MS-CAN, such as the Ford VCM "
+                             "II, VCM 3 or VCMM.")
+            else:
+                results += ms
+
         if make == "honda" or (sweep and make == "other"):
             say("Looking for 29-bit CAN modules (Honda style, ~1-2 min) ...")
             tgts = sc.sweep_can29()
@@ -1347,9 +1934,15 @@ def ensure_pyserial():
     importlib.invalidate_caches()
 
 
+def make_adapter(port, baud=None):
+    if port.lower().startswith(J2534_PREFIX):
+        return J2534Adapter(port)
+    return SerialAdapter(port, baud)
+
+
 def open_adapter(port):
     try:
-        return SerialAdapter(port)
+        return make_adapter(port)
     except SystemExit as e:  # SerialAdapter reports problems via sys.exit for the CLI
         raise RuntimeError(str(e))
 
@@ -1620,8 +2213,15 @@ class App:
 
     # -- adapter actions
     def ports(self):
-        return [{"device": p.device, "description": p.description or "",
-                 "obd": is_obd_adapter(p)} for p in find_ports()]
+        out = []
+        for d in j2534_devices():
+            ok = python_bits() in d["libs"]
+            out.append({"device": J2534_PREFIX + d["name"], "obd": ok,
+                        "description": f"J2534 pass-thru ({d['vendor'] or d['name']})" + (
+                            "" if ok else f" - driver is {'/'.join(f'{b}-bit' for b in d['libs'])}"
+                                          f" only, can't load in this {python_bits()}-bit app")})
+        return out + [{"device": p.device, "description": p.description or "",
+                       "obd": is_obd_adapter(p)} for p in find_ports()]
 
     def probe(self, port):
         if not port:
@@ -1911,7 +2511,7 @@ def main():
 
     port = auto_port() if args.port == "auto" else args.port
     print(f"Using port {port}", file=sys.stderr)
-    io = SerialAdapter(port, args.baud)
+    io = make_adapter(port, args.baud)
     say = (lambda *_: None) if args.quiet else (lambda s: print(s, file=sys.stderr))
 
     if args.probe:
@@ -2078,6 +2678,7 @@ pre code { background:none; padding:0; }
         <option value="honda">Honda / Acura</option>
         <option value="gm">GM: Chevrolet, GMC, Buick, Cadillac, Pontiac, Saturn</option>
         <option value="chrysler">Chrysler / Dodge / Jeep / Ram</option>
+        <option value="ford">Ford / Lincoln / Mercury</option>
         <option value="other">Other make</option>
       </select></div>
     <label class="check"><input type="checkbox" id="modules" checked> Module scan (ABS, airbag, body, trans...)</label>
@@ -2223,7 +2824,7 @@ function buildTabs() {
 }
 function count(k, n, bad) { const el = $("n_" + k); if (!el) return; el.hidden = !n; el.textContent = n; el.classList.toggle("bad", !!bad); }
 function vehicleText(r) {
-  const v = r.vehicle || {}; const short = { toyota: "Toyota", honda: "Honda", gm: "GM", chrysler: "Chrysler/Jeep" };
+  const v = r.vehicle || {}; const short = { toyota: "Toyota", honda: "Honda", gm: "GM", chrysler: "Chrysler/Jeep", ford: "Ford" };
   if (!v.make || v.make === "other") return v.make_source === "selected" ? "Other make" : "Make unknown";
   return (short[v.make] + " " + (v.year || "")).trim();
 }
@@ -2389,7 +2990,7 @@ api("/api/config").then(cfg => {
 
 GUIDE_MD = r"""# OnlyScans guide
 
-OnlyScans reads trouble codes and sensor data from any 1996-or-newer car or truck through a vLinker FS USB (or another ELM327-type) adapter. It also has an AI mechanic that reads all of that data and suggests what to check and fix.
+OnlyScans reads trouble codes and sensor data from any 1996-or-newer car or truck through either a vLinker FS USB (or another ELM327-type) adapter, or a J2534 dealer tool such as the Mongoose-Plus, Ford VCM II / VCM 3 / VCMM or Honda GNA600. It also has an AI mechanic that reads all of that data and suggests what to check and fix.
 
 ## Starting OnlyScans
 
@@ -2399,18 +3000,38 @@ OnlyScans reads trouble codes and sensor data from any 1996-or-newer car or truc
 
 Keep the console window open while you use the app; closing it quits OnlyScans. If the browser doesn't open, go to the address shown in the console window (normally `http://127.0.0.1:8765`).
 
+## Which adapter
+
+- **vLinker FS / ELM327-type adapters** appear in the port list as a COM port marked **[OBD adapter]**.
+- **J2534 dealer tools** appear as **j2534:** followed by the device name, for example `j2534:Mongoose-Plus` or `j2534:VCM II`. Install the tool's own driver first:
+  - **Mongoose-Plus:** the Opus IVS driver package.
+  - **Ford VCM II:** its driver only comes with Ford IDS.
+  - **VCM 3:** Ford's VCM 3 driver.
+  - **VCMM:** the Bosch J2534 VCI driver.
+  - **GNA600:** the Honda/Bosch J2534 driver.
+
+  OnlyScans uses 32-bit drivers, which is what most of these tools install. A tool that only has a 64-bit driver shows a note in the port list.
+
+| | vLinker / ELM327 | J2534 tool |
+|---|---|---|
+| Engine codes, live data, freeze frame, monitor tests | Yes | Yes |
+| Module codes on CAN (Toyota, Honda, Chrysler, Ford) | Yes | Yes, usually faster and more reliable |
+| GM module codes on GMLAN | Yes | Not yet (GM sends them in a format the J2534 channel doesn't pass) |
+| Ford MS-CAN modules (climate, doors, audio) | No | Yes, if the tool supports MS-CAN (VCM II, VCM 3, VCMM) |
+| Older K-line and J1850 vehicles | Yes | Only if the tool has those protocols. Many single-make tools are CAN plus K-line only |
+
 ## Before you scan
 
 1. **Plug in the adapter.** The OBD port is under the dash on the driver's side, usually above the pedals. Connect the other end to a USB port on the laptop.
-2. **Set the vLinker switch to HS-CAN.** The MS-CAN position is only for Fords, and it hides the main bus on everything else.
+2. **vLinker only: set its switch to HS-CAN.** The MS-CAN position is only for Fords, and it hides the main bus on everything else. J2534 tools have no switch; OnlyScans selects the pins itself.
 3. **Turn the key to ON.** For codes, engine off is fine. For live sensor data, start the engine.
-4. **Close FORScan** or any other OBD program. Only one program can use the adapter at a time.
+4. **Close FORScan, Techstream, IDS/FDRS, HDS** or any other OBD program. Only one program can use the adapter at a time.
 
 If the adapter isn't listed in step 1 below, install the FTDI VCP driver from ftdichip.com, then unplug the adapter and plug it back in.
 
 ## 1. Connect
 
-- **Adapter port:** the vLinker is listed first and marked **[OBD adapter]**. Click **Refresh ports** if you plugged it in after opening the app.
+- **Adapter port:** J2534 tools are listed first (as **j2534:**...), then the vLinker, marked **[OBD adapter]**. Click **Refresh ports** if you plugged it in after opening the app.
 - **Test adapter:** checks that the adapter answers and reads the battery voltage at the OBD port.
   - Key on, engine off: about 12.2–12.8 V.
   - Engine running: about 13.5–14.7 V.
@@ -2432,6 +3053,7 @@ If the adapter isn't listed in step 1 below, install the FTDI VCP driver from ft
 | Honda / Acura | Yes | CAN: automatic module search. Older: proprietary or blink codes |
 | GM | Yes | CAN: automatic module search. About 1999–2007: experimental. Older: not reachable |
 | Chrysler / Dodge / Jeep / Ram | Yes | CAN: automatic module search. About 2002–2007: experimental. Earlier body modules are on the CCD bus and not reachable. 2018+: the security gateway may block some modules |
+| Ford / Lincoln / Mercury | Yes | CAN: known modules on the main bus (engine, ABS, airbag, cluster, body, SYNC and more). MS-CAN comfort modules with a J2534 tool that supports MS-CAN. Older J1850 PWM Fords: engine codes only |
 
 *Experimental* means the requests follow the published formats but haven't been confirmed on a real vehicle yet.
 
@@ -2504,6 +3126,9 @@ The panel on the right is an AI mechanic that uses Claude (`claude-sonnet-5-5`, 
 | Browser didn't open | Open the address shown in the console window, normally `http://127.0.0.1:8765` |
 | No ports listed | Install the FTDI VCP driver, replug the adapter, then click Refresh ports |
 | "Could not open port" | Close FORScan or any other OBD program |
+| J2534 tool isn't listed | Install its driver (for a VCM II, that means installing Ford IDS), plug it in, then click Refresh ports |
+| J2534 tool says "driver is 64-bit only" | That driver can't load in OnlyScans. Check the maker's site for a 32-bit J2534 driver |
+| "Unable to connect" with a J2534 tool on an older vehicle | The tool may not have that vehicle's protocol (J1850 or K-line). Use the vLinker for that vehicle |
 | "Vehicle did not answer" | Key ON, adapter pushed fully in, vLinker switch on HS-CAN |
 | Test adapter shows no voltage | Reseat the adapter, then check the fuse that feeds the OBD port |
 | Make unknown | The vehicle doesn't report a VIN. Pick the make and scan again |
